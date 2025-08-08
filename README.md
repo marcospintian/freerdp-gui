@@ -34,13 +34,14 @@ rdp_connector/
 
 ### Funcionalidades Principais
 
-- **Interface gráfica moderna** com abas organizadas
+- **Interface gráfica** com abas organizadas
 - **Gerenciamento de servidores** via arquivo INI
 - **Armazenamento seguro de senhas** usando keyring do sistema
 - **System tray** com conexões rápidas
 - **Logs detalhados** com visualizador integrado
 - **Configurações persistentes** 
 - **Conexões RDP avançadas** com múltiplas opções
+- **Menus com opções simples** semelhantes as opções do mstsc
 
 ### Arquitetura Modular
 
@@ -165,7 +166,7 @@ usuario = user
 ### Opções de Conexão RDP
 
 - **Área de transferência**: Compartilhamento entre sistemas
-- **Drives locais**: Montar pasta home como drive
+- **Drives locais**: Montar pasta home como drive para simular conexão de máquina com Windows
 - **Som**: Local, remoto, ambos ou desabilitado
 - **Impressoras**: Compartilhar impressoras locais
 - **Multi-monitor**: Usar múltiplos monitores
@@ -238,9 +239,8 @@ Este projeto está sob licença MIT. Veja arquivo `LICENSE` para detalhes.
 
 ## Roadmap
 
-- [ ] Interface web opcional
-- [ ] Suporte a múltiplos protocolos (VNC, SSH)
+- [ ] Separação do IP e da porta
+- [ ] Permitir a conexão sem informar a porta usando a padrão 3389
 - [ ] Temas personalizáveis
-- [ ] Plugins de extensão
 - [ ] Sincronização de configurações
-- [ ] Túneis SSH automáticos
+- [ ] Empacotamento em Flatpak
