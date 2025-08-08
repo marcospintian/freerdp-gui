@@ -10,7 +10,7 @@ try:
         QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
         QLabel, QLineEdit, QPushButton, QListWidget, QMessageBox
     )
-    from PySide6.QtCore import Signal
+    from PySide6.QtCore import Signal, Qt
 except ImportError as e:
     raise ImportError(f"PySide6 não encontrado: {e}")
 
@@ -338,7 +338,7 @@ class GerenciadorServidoresWidget(QWidget):
         self._recarregar_servidores()
         
         # Selecionar servidor salvo
-        items = self.lista.findItems(nome, self.lista.MatchFlag.MatchExactly)
+        items = self.lista.findItems(nome, Qt.MatchFlag.MatchExactly)
         if items:
             self.lista.setCurrentItem(items[0])
         
