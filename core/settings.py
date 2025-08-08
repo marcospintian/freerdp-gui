@@ -230,18 +230,31 @@ class ConfiguracoesAplicacao:
         if len(historico) > max_itens:
             historico = historico[:max_itens]
         
-        self.settings.salvar_valor("historico_conexoes", historico)
+        historico_str = ';'.join(historico)
+        self.settings.salvar_valor("historico_conexoes", historico_str)
     
     def obter_historico_conexoes(self) -> list:
         """Obtém histórico de conexões"""
-        return self.settings.obter_valor("historico_conexoes", [])
+        historico_str = self.settings.obter_valor("historico_conexoes", "")
+        if historico_str and isinstance(historico_str, str):
+            return historico_str.split(';')
+        return []
     
     def adicionar_ao_historico(self, servidor: str, usuario: str, max_itens: int = 10):
         """Adiciona entrada ao histórico"""
+        entrada = f"{servidor.replace(';', '-')}|{usuario.replace(';', '-')}"
+
         historico = self.obter_historico_conexoes()
         
+        # Se por algum motivo não for lista, converter
+        if not isinstance(historico, list):
+            logger.warning("Histórico não era lista, convertendo")
+            if isinstance(historico, str):
+                historico = [historico] if historico else []
+            else:
+                historico = []
+
         # Remover entrada duplicada se existir
-        entrada = f"{servidor}|{usuario}"
         if entrada in historico:
             historico.remove(entrada)
         
