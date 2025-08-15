@@ -490,8 +490,9 @@ class RDPConnectorWindow(QMainWindow):
             self._notificar("RDP Connector", f"Senha necessária para {servidor}")
             return
         
-        # Usar opções padrão
-        opcoes = criar_opcoes_padrao()
+        # Usar opções da interface
+        opcoes = self._obter_opcoes_conexao()
+
         
         # Iniciar conexão
         self._iniciar_conexao(host, usuario_padrao, senha, opcoes)

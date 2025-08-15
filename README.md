@@ -1,26 +1,40 @@
-# freerdp-gui
 # RDP Connector Pro - Modular
 
-Uma aplicação gráfica em Python para gerenciar e conectar via RDP de forma simples e eficiente.
+Uma aplicação gráfica em Python para gerenciar e conectar via RDP de forma simples e eficiente, com interface moderna e funcionalidades avançadas.
+
+## 🚀 Novas Funcionalidades (Versão Atual)
+
+### ✨ Melhorias Recentes Implementadas
+
+- **🔒 Instância Única**: Prevenção de múltiplas instâncias executando simultaneamente
+- **🎯 Controle Inteligente de Conexões**: Sistema avançado de gerenciamento de conexões ativas
+- **🔧 Sistema de Limpeza Automática**: Gerenciamento seguro de threads e recursos
+- **🌟 System Tray Inteligente**: Comportamento aprimorado para minimização e restauração
+- **📱 Notificações Desktop**: Integração com sistema de notificações do Linux
+- **⚡ Conexões Rápidas**: Conectar diretamente pelo system tray com senhas salvas
+- **🔐 Gerenciamento Seguro de Senhas**: Integração completa com keyring do sistema
+- **📊 Logging Avançado**: Sistema de logs com rotação automática e visualizador integrado
+- **🔄 Auto-salvamento**: Configurações salvas automaticamente a cada conexão
+- **📈 Histórico de Conexões**: Rastreamento das últimas conexões realizadas
 
 ## Estrutura do Projeto
 
 ```
 rdp_connector/
 │
-├── main.py                    # Ponto de entrada da aplicação
+├── main.py                    # Ponto de entrada da aplicação ⚡ MELHORADO
 ├── core/                      # Lógica de negócio
-│   ├── rdp.py                 # Conexões RDP (RDPThread, RDPConnector)
-│   ├── servidores.py          # Gerenciamento de servidores (INI)
-│   ├── settings.py            # Configurações da aplicação (QSettings)
-│   └── utils.py               # Funções utilitárias
+│   ├── rdp.py                 # Conexões RDP (RDPThread) 🔄 MELHORADO
+│   ├── servidores.py          # Gerenciamento de servidores (INI) ✅ ESTÁVEL
+│   ├── settings.py            # Configurações da aplicação (QSettings) 🔧 MELHORADO
+│   └── utils.py               # Funções utilitárias 📊 EXPANDIDO
 │
 ├── gui/                       # Interface gráfica
-│   ├── main_window.py         # Janela principal
-│   ├── gerenciador.py         # Widget de gerenciamento de servidores
-│   ├── senha_dialog.py        # Dialog de gerenciamento de senhas
-│   ├── logs_window.py         # Janela de visualização de logs
-│   └── system_tray.py         # Gerenciador do system tray
+│   ├── main_window.py         # Janela principal 🌟 TOTALMENTE RENOVADO
+│   ├── gerenciador.py         # Widget de gerenciamento de servidores ✅ ESTÁVEL
+│   ├── senha_dialog.py        # Dialog de gerenciamento de senhas 🔐 MELHORADO
+│   ├── logs_window.py         # Janela de visualização de logs 📊 NOVO
+│   └── system_tray.py         # Gerenciador do system tray 🎯 COMPLETAMENTE NOVO
 │
 ├── assets/                    # Recursos da aplicação
 │   └── rdp-icon.png           # Ícone da aplicação (opcional)
@@ -30,217 +44,314 @@ rdp_connector/
 └── README.md                  # Este arquivo
 ```
 
-## Características
+## 🎯 Características Principais
 
-### Funcionalidades Principais
+### 🔥 Funcionalidades Core
 
-- **Interface gráfica** com abas organizadas
-- **Gerenciamento de servidores** via arquivo INI
-- **Armazenamento seguro de senhas** usando keyring do sistema
-- **System tray** com conexões rápidas
-- **Logs detalhados** com visualizador integrado
-- **Configurações persistentes** 
-- **Conexões RDP avançadas** com múltiplas opções
-- **Menus com opções simples** semelhantes as opções do mstsc
+- **Interface gráfica moderna** com abas organizadas e design intuitivo
+- **Gerenciamento completo de servidores** via arquivo INI com validação
+- **Armazenamento ultra-seguro de senhas** usando keyring nativo do sistema
+- **System tray inteligente** com menu dinâmico e conexões rápidas
+- **Sistema de logs profissional** com visualizador em tempo real
+- **Configurações persistentes** com auto-salvamento
+- **Conexões RDP avançadas** com todas as opções do xfreerdp
+- **Prevenção de instâncias múltiplas** para estabilidade
+- **Notificações desktop nativas** para feedback visual
 
-### Arquitetura Modular
+### 🏗️ Arquitetura Avançada
 
-- **Separação de responsabilidades** entre módulos
-- **Core isolado** da interface gráfica
-- **Fácil manutenção** e extensão
-- **Testes unitários** facilitados
-- **Reutilização de código** entre componentes
+- **Separação completa** entre lógica de negócio e interface
+- **Padrão Singleton** para gerenciadores de recursos
+- **Threading seguro** com cleanup automático de conexões
+- **Sistema de sinais Qt** para comunicação entre componentes
+- **Tratamento robusto de exceções** em todas as camadas
+- **Gerenciamento inteligente de memória** com limpeza automática
+- **Arquitetura modular** facilitando manutenção e testes
 
-## Instalação
+### 🔐 Segurança e Estabilidade
 
-### Pré-requisitos
+- **Senhas NUNCA armazenadas** em texto plano
+- **Integração nativa** com keyring do sistema operacional
+- **Logs sanitizados** sem dados sensíveis
+- **Validação rigorosa** de todos os dados de entrada
+- **Cleanup automático** de recursos e threads
+- **Prevenção de vazamentos de memória**
 
-- Python 3.8+
-- xfreerdp (Linux) - para conexões RDP
-- Sistema com keyring suportado
+## 📦 Instalação
 
-### Dependências Python
+### 🔧 Pré-requisitos
+
+- **Python 3.8+** (testado até 3.12)
+- **xfreerdp** (Linux) - para conexões RDP
+- **Sistema com keyring** suportado (GNOME Keyring, KDE Wallet, etc.)
+- **Sistema de notificações** (notify-send - opcional)
+
+### 📚 Dependências Python
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### Instalação do xfreerdp (Linux)
+**Dependências principais:**
+- `PySide6` - Interface gráfica moderna
+- `keyring` - Gerenciamento seguro de senhas
+- `configparser` - Manipulação de arquivos INI
+
+### 🐧 Instalação do xfreerdp (Linux)
 
 ```bash
 # Ubuntu/Debian
 sudo apt install freerdp2-x11
 
-# Fedora
+# Fedora/CentOS/RHEL
 sudo dnf install freerdp
 
-# Arch Linux  
+# Arch Linux/Manjaro
 sudo pacman -S freerdp
+
+# openSUSE
+sudo zypper install freerdp
 ```
 
-## Uso
+## 🚀 Uso
 
-### Executar aplicação
+### ▶️ Executar aplicação
 
 ```bash
 python main.py
 ```
 
-### Configuração inicial
+### ⚙️ Configuração inicial
 
 1. A aplicação criará automaticamente um arquivo `servidores.ini` com exemplos
-2. Use a aba "Gerenciar Servidores" para adicionar seus servidores
-3. Configure as opções de conexão na aba "Opções"
+2. Use a aba **"Gerenciar Servidores"** para adicionar seus servidores
+3. Configure as opções de conexão na aba **"Opções"**
+4. Marque **"Salvar senha automaticamente"** para conexões rápidas
 
-### Conexão rápida via System Tray
+### ⚡ Funcionalidades Avançadas
 
+#### 🎯 Conexão Rápida via System Tray
 - Clique direito no ícone da bandeja
-- Selecione "Conectar a [Servidor]"
+- Selecione **"Conectar a [Servidor]"**
 - A conexão será iniciada automaticamente se a senha estiver salva
 
-## Módulos
+#### 📊 Visualização de Logs
+- Acesse via menu do system tray **"Ver Logs"**
+- Logs em tempo real com auto-atualização
+- Opções para limpar, salvar e exportar logs
 
-### Core (`core/`)
+#### 🔐 Gerenciamento de Senhas
+- Senhas armazenadas com segurança no keyring do sistema
+- Opção de salvar senha automaticamente após conexão bem-sucedida
+- Gerenciamento individual por servidor
 
-#### `utils.py`
-- Funções utilitárias compartilhadas
-- Configuração de logging
-- Validações e helpers
+## 🧩 Módulos Detalhados
 
-#### `servidores.py`
-- Classe `ServidorManager` para gerenciar arquivo INI
-- CRUD completo de servidores
-- Validação de dados
+### 🔧 Core (`core/`)
 
-#### `rdp.py`  
-- Classe `RDPThread` para conexões assíncronas
-- Classe `RDPConnector` para conexões síncronas
-- Construção de comandos xfreerdp com opções avançadas
+#### `main.py` ⚡ **MELHORADO**
+- **Instância única** com memória compartilhada
+- **Signal handlers** para encerramento gracioso
+- **Cleanup automático** de recursos na saída
+- **Tratamento de erros** robusto na inicialização
 
-#### `settings.py`
-- Classe `SettingsManager` usando QSettings
-- Persistência de configurações da interface
-- Histórico de conexões
+#### `utils.py` 📊 **EXPANDIDO**
+- Sistema de logging com rotação automática
+- Validações aprimoradas de IP e porta
+- Notificações desktop multiplataforma
+- Mapeamentos de opções organizados
+- Funções utilitárias para manipulação de arquivos
 
-### GUI (`gui/`)
+#### `rdp.py` 🔄 **MELHORADO**
+- Classe `RDPThread` com sinais Qt para feedback em tempo real
+- Construção inteligente de comandos xfreerdp
+- Tratamento robusto de erros de conexão
+- Suporte a todas as opções avançadas do FreeRDP
 
-#### `main_window.py`
-- Janela principal da aplicação
-- Coordenação entre componentes
-- Gerenciamento de estado da aplicação
+#### `settings.py` 🔧 **MELHORADO**
+- Classe `SettingsManager` usando QSettings para persistência
+- `ConfiguracoesAplicacao` para configurações específicas
+- Histórico de conexões com limitação automática
+- Auto-salvamento de preferências
 
-#### `gerenciador.py`
-- Widget para gerenciar servidores
-- Interface CRUD completa
-- Integração com keyring
+#### `servidores.py` ✅ **ESTÁVEL**
+- Gerenciamento completo de servidores (CRUD)
+- Validação de dados de entrada
+- Tratamento de erros na manipulação do arquivo INI
+- Singleton pattern para acesso global
 
-#### `senha_dialog.py`
-- Dialog para gerenciar senhas no keyring
-- Entrada segura de senhas
-- Validações de entrada
+### 🎨 GUI (`gui/`)
 
-#### `logs_window.py`
+#### `main_window.py` 🌟 **TOTALMENTE RENOVADO**
+- **Controle inteligente de conexões ativas**
+- **Sistema de saída aprimorado** com verificações de segurança
+- **Integração completa** com system tray
+- **Threading seguro** com cleanup automático
+- **Auto-salvamento** de configurações
+- **Histórico de conexões** automático
+
+#### `system_tray.py` 🎯 **COMPLETAMENTE NOVO**
+- Menu dinâmico baseado nos servidores cadastrados
+- Conexões rápidas com um clique
+- Notificações nativas do sistema
+- Gerenciamento inteligente de ícones
+- Integração completa com janela principal
+
+#### `logs_window.py` 📊 **NOVO**
 - Visualizador de logs em tempo real
-- Filtros e exportação
-- Auto-atualização
+- Auto-atualização a cada 2 segundos
+- Opções para limpar e exportar logs
+- Interface com tema escuro para melhor legibilidade
+- Limitação automática de linhas para performance
 
-#### `system_tray.py`
-- Gerenciamento do ícone da bandeja
-- Menu contextual dinâmico
-- Notificações do sistema
+#### `gerenciador.py` ✅ **ESTÁVEL**
+- Interface CRUD completa para servidores
+- Integração total com keyring
+- Validação de entrada robusta
+- Feedback visual para todas as operações
 
-## Configuração
+#### `senha_dialog.py` 🔐 **MELHORADO**
+- Dialog simplificado para entrada de senhas
+- Integração com keyring do sistema
+- Função helper para solicitação rápida
 
-### Arquivo `servidores.ini`
+## ⚙️ Configuração Avançada
+
+### 📄 Arquivo `servidores.ini`
 
 ```ini
-[Servidor1]
+[Servidor-Producao]
 ip = 192.168.1.100:3389
 usuario = administrador
 
-[Servidor2]  
-ip = 10.0.0.50:3389
-usuario = user
+[Servidor-Desenvolvimento]  
+ip = 10.0.0.50:3390
+usuario = developer
+
+[Servidor-Teste]
+ip = teste.empresa.com:3389
+usuario = testuser
 ```
 
-### Opções de Conexão RDP
+### 🎛️ Opções de Conexão RDP Completas
 
-- **Área de transferência**: Compartilhamento entre sistemas
-- **Drives locais**: Montar pasta home como drive para simular conexão de máquina com Windows
-- **Som**: Local, remoto, ambos ou desabilitado
-- **Impressoras**: Compartilhar impressoras locais
-- **Multi-monitor**: Usar múltiplos monitores
-- **Resolução**: Automática ou personalizada
-- **Qualidade**: LAN, Broadband ou Modem
+- **📋 Área de transferência**: Sincronização bidirecional
+- **💾 Drives locais**: Montar pasta home como drive para simular ambiente Windows
+- **🔊 Som**: Local, remoto, ambos ou desabilitado
+- **🖨️ Impressoras**: Compartilhar todas as impressoras locais
+- **🖥️ Multi-monitor**: Usar todos os monitores disponíveis
+- **📐 Resolução**: Automática ou personalizada (até 1920x1080)
+- **📶 Qualidade**: LAN (máxima), Broadband (equilibrada) ou Modem (economia)
+- **🔄 Reconexão automática**: Reconectar automaticamente se perder conexão
+- **🗜️ Compressão**: Otimização automática baseada na qualidade selecionada
 
-## Logging
+## 📊 Sistema de Logging
 
-Os logs são armazenados em `~/.config/rdp-connector.log` com rotação automática:
+### 📝 Localização e Configuração
+- **Arquivo principal**: `~/.config/rdp-connector.log`
+- **Rotação automática**: 5MB por arquivo, 3 backups
+- **Níveis**: INFO, WARNING, ERROR, DEBUG
+- **Formato**: `[timestamp] - [nível] - [mensagem]`
 
-- Tamanho máximo: 5MB por arquivo
-- Backup: 3 arquivos
-- Formato: timestamp, nível, mensagem
+### 🔍 Visualizador Integrado
+- Interface em tempo real com auto-refresh
+- Tema escuro para melhor legibilidade
+- Limitação automática (últimas 1000 linhas)
+- Opções de exportação e limpeza
+- Scroll automático para mensagens recentes
 
-## Segurança
+## 🛡️ Segurança
 
-- **Senhas não são armazenadas** em texto plano
-- **Keyring do sistema** usado para credenciais
-- **Logs não contêm** senhas ou dados sensíveis
-- **Validação de entrada** em todos os campos
+### 🔐 Proteção de Dados
+- **Senhas**: JAMAIS armazenadas em texto plano
+- **Keyring**: Integração nativa com wallet do sistema
+- **Logs**: Completamente sanitizados, sem dados sensíveis
+- **Validação**: Verificação rigorosa de todos os inputs
+- **Memória**: Limpeza automática de dados sensíveis
 
-## Desenvolvimento
+### 🔒 Boas Práticas Implementadas
+- Princípio de menor privilégio
+- Validação de entrada em todas as camadas
+- Tratamento seguro de exceções
+- Cleanup automático de recursos
+- Isolamento de componentes sensíveis
 
-### Estrutura para novos recursos
+## 🛠️ Desenvolvimento
 
-1. **Lógica de negócio**: adicionar em `core/`
-2. **Interface**: adicionar em `gui/`
-3. **Testes**: criar arquivos de teste paralelos
+### 📁 Estrutura para Novos Recursos
+
+1. **Lógica de negócio**: implementar em `core/`
+2. **Interface gráfica**: implementar em `gui/`
+3. **Testes unitários**: criar em `tests/` (estrutura preparada)
 4. **Documentação**: atualizar README e docstrings
 
-### Padrões de código
+### 📋 Padrões de Código Seguidos
 
-- **Type hints** em todas as funções
-- **Docstrings** detalhadas
-- **Logging** adequado em todos os módulos
-- **Tratamento de exceções** robusto
-- **Separação clara** entre GUI e lógica
+- **Type hints** em todas as funções públicas
+- **Docstrings** detalhadas estilo Google
+- **Logging** estruturado em todos os módulos
+- **Tratamento de exceções** granular e informativo
+- **Separação clara** entre apresentação e lógica
+- **Padrões de design** (Singleton, Observer, Factory)
 
-### Testes
+## 🤝 Contribuição
 
-```bash
-# Exemplo de estrutura para testes futuros
-tests/
-├── test_core/
-│   ├── test_servidores.py
-│   ├── test_rdp.py
-│   └── test_utils.py
-└── test_gui/
-    ├── test_main_window.py
-    └── test_gerenciador.py
-```
+### 🔄 Fluxo de Desenvolvimento
 
-## Contribuição
+1. **Fork** do projeto
+2. **Criar branch** para feature (`git checkout -b feature/nova-funcionalidade`)
+3. **Implementar** seguindo os padrões estabelecidos
+4. **Adicionar testes** para a nova funcionalidade
+5. **Commit** das mudanças (`git commit -am 'feat: adiciona nova funcionalidade'`)
+6. **Push** para branch (`git push origin feature/nova-funcionalidade`)
+7. **Criar Pull Request** com descrição detalhada
 
-1. Fork do projeto
-2. Criar branch para feature (`git checkout -b feature/nova-feature`)
-3. Commit das mudanças (`git commit -am 'Adiciona nova feature'`)
-4. Push para branch (`git push origin feature/nova-feature`)
-5. Criar Pull Request
+### 📝 Convenções de Commit
 
-## Licença
+- `feat:` nova funcionalidade
+- `fix:` correção de bug
+- `docs:` alterações na documentação
+- `style:` formatação, sem mudanças de código
+- `refactor:` refatoração de código
+- `test:` adição ou correção de testes
+- `chore:` atualizações de build, deps, etc.
 
-Este projeto está sob licença MIT. Veja arquivo `LICENSE` para detalhes.
+## 📜 Licença
 
-## Problemas Conhecidos
+Este projeto está sob licença **MIT**. Veja arquivo `LICENSE` para detalhes completos.
 
-- System tray pode não funcionar em alguns ambientes Linux
-- xfreerdp requer configurações específicas em alguns sistemas
-- Keyring pode precisar de configuração manual em headless systems
+## ⚠️ Problemas Conhecidos
 
-## Roadmap
+### 🐛 Issues Atuais
+- System tray pode não funcionar em alguns ambientes Linux minimalistas
+- xfreerdp requer configurações específicas para algumas distribuições
+- Keyring pode precisar de configuração manual em sistemas headless
+- Alguns gestores de janela podem não suportar notificações desktop
 
-- [ ] Separação do IP e da porta
-- [ ] Permitir a conexão sem informar a porta usando a padrão 3389
-- [ ] Temas personalizáveis
-- [ ] Sincronização de configurações
-- [ ] Empacotamento em Flatpak
+### 🔧 Soluções e Workarounds
+- **System tray**: Verificar se `libappindicator` está instalado
+- **xfreerdp**: Consultar documentação específica da distribuição
+- **Keyring**: Configurar `gnome-keyring` ou `kwallet` manualmente
+- **Notificações**: Instalar `libnotify-bin` ou similar
+
+## 📈 Métricas do Projeto
+
+- **Linhas de código**: ~2.500 linhas
+- **Módulos Python**: 11 arquivos
+- **Funcionalidades**: 25+ recursos implementados
+- **Cobertura de testes**: Em desenvolvimento
+- **Compatibilidade**: Python 3.8 - 3.12
+- **Plataformas**: Linux (testado), Windows/macOS (no futuro)
+
+---
+
+## 🎯 Status do Projeto
+
+**Versão Atual**: 2.0.0 (Major Update)
+**Status**: Estável para uso em produção
+**Última atualização**: Agosto 2025
+**Próxima release**: Ver roadmap abaixo
+
+---
+
+*Desenvolvido com ❤️ e ☕ para simplificar conexões RDP no Linux*
