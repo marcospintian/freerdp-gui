@@ -11,7 +11,7 @@ try:
         QLabel, QComboBox, QLineEdit, QPushButton, QCheckBox, QMessageBox,
         QFormLayout, QSystemTrayIcon, QMenu, QTabWidget, QApplication
     )
-    from PySide6.QtCore import Qt, QTimer
+    from PySide6.QtCore import Qt, QTimer, Signal
     from PySide6.QtGui import QIcon, QPixmap, QAction
 except ImportError as e:
     raise ImportError(f"PySide6 não encontrado: {e}")
@@ -31,9 +31,15 @@ logger = logging.getLogger(__name__)
 class RDPConnectorWindow(QMainWindow):
     """Janela principal da aplicação"""
     
+    # SINAL ADICIONADO - Indica quando a aplicação deve realmente sair
+    aplicacao_deve_sair = Signal()
+    
     def __init__(self):
         super().__init__()
         self._fechar_de_verdade = False
+        
+        # CONTADOR DE CONEXÕES ATIVAS ADICIONADO
+        self.conexoes_ativas = 0
 
         # Managers
         self.servidor_manager = get_servidor_manager()
@@ -41,7 +47,7 @@ class RDPConnectorWindow(QMainWindow):
         self.config_app = get_configuracoes_app()
         
         # Estado
-        self.rdp_thread = None
+        self.rdp_threads: Dict[str, RDPThread] = {}
         self.logs_window = None
         
         # Dados
@@ -55,6 +61,91 @@ class RDPConnectorWindow(QMainWindow):
         
         logger.info("Janela principal inicializada")
     
+    # MÉTODOS ADICIONADOS PARA CONTROLE DE CONEXÕES
+    def incrementar_conexoes(self):
+        """Incrementa contador de conexões ativas"""
+        self.conexoes_ativas += 1
+        logger.info(f"Conexões ativas: {self.conexoes_ativas}")
+        
+    def decrementar_conexoes(self):
+        """Decrementa contador de conexões ativas"""
+        self.conexoes_ativas = max(0, self.conexoes_ativas - 1)
+        logger.info(f"Conexões ativas: {self.conexoes_ativas}")
+        
+        # Verificar se deve sair após desconexão
+        if self.conexoes_ativas == 0:
+            self.verificar_saida_completa()
+    
+    def verificar_saida_completa(self):
+        """Verifica se a aplicação deve sair completamente"""
+        # Se não há conexões ativas e a janela está oculta
+        if self.conexoes_ativas == 0 and not self.isVisible():
+            logger.info("Sem conexões ativas e janela oculta - considerando saída")
+            # Aguardar um pouco antes de decidir sair (dar tempo para nova conexão)
+            QTimer.singleShot(5000, self.considerar_saida)  # 5 segundos
+    
+    def considerar_saida(self):
+        """Considera sair se ainda não há atividade"""
+        if self.conexoes_ativas == 0 and not self.isVisible():
+            logger.info("Decidindo sair da aplicação")
+            self.sair_aplicacao()
+    
+    def sair_aplicacao(self):
+        """Método para sair completamente da aplicação"""
+        logger.info("Saindo da aplicação completamente")
+        
+        # Esconder system tray primeiro
+        if hasattr(self, 'system_tray'):
+            self.system_tray.hide()
+        
+        # Fechar todas as conexões RDP ativas
+        self.encerrar_todas_conexoes()
+        
+        # Salvar configurações
+        self._salvar_configuracoes()
+        
+        # Marcar para fechar de verdade
+        self._fechar_de_verdade = True
+        
+        # Emitir sinal de saída
+        self.aplicacao_deve_sair.emit()
+    
+    def encerrar_todas_conexoes(self):
+        """Encerra todas as conexões RDP ativas"""
+        logger.info("Encerrando todas as conexões RDP")
+        self._limpar_thread_rdp()
+        self.conexoes_ativas = 0
+    
+    def _limpar_thread_rdp(self):
+        """Limpa todas as threads RDP de forma segura"""
+        if not self.rdp_threads:
+            return True
+
+        logger.info(f"Finalizando {len(self.rdp_threads)} threads RDP...")
+
+        threads_a_remover = list(self.rdp_threads.keys())
+        for thread_id in threads_a_remover:
+            thread = self.rdp_threads.get(thread_id)
+            if thread and thread.isRunning():
+                logger.info(f"Finalizando thread {thread_id}...")
+                thread.quit()
+                if not thread.wait(3000):
+                    logger.warning(f"Thread {thread_id} não finalizou graciosamente, forçando...")
+                    thread.terminate()
+                    if not thread.wait(2000):
+                        logger.error(f"Thread {thread_id} não pôde ser finalizada!")
+                        continue
+
+            if thread:
+                thread.deleteLater()
+
+            # Remover do dicionário independentemente do sucesso da finalização
+            if thread_id in self.rdp_threads:
+                del self.rdp_threads[thread_id]
+
+        logger.info("Todas as threads RDP finalizadas com sucesso")
+        return True
+
     def _init_ui(self):
         """Inicializa interface do usuário"""
         self.setWindowTitle("RDP Connector Pro")
@@ -412,20 +503,37 @@ class RDPConnectorWindow(QMainWindow):
         
         self._notificar("RDP Connector", f"Conectando a {host}...")
         
+        # INCREMENTAR CONTADOR DE CONEXÕES
+        self.incrementar_conexoes()
+        
         # Minimizar janela
         self.hide()
         
         # Criar e iniciar thread
-        self.rdp_thread = RDPThread(host, usuario, senha, opcoes)
-        self.rdp_thread.finished.connect(self._on_conexao_finalizada)
-        self.rdp_thread.start()
+        # Crie uma chave única para a conexão, como o host
+        thread_id = host
+        # Crie e inicie a nova thread
+        rdp_thread = RDPThread(host, usuario, senha, opcoes)
+        # Armazene a thread no dicionário
+        self.rdp_threads[thread_id] = rdp_thread
+        # Conecte o sinal finished a um novo método que gerencie a finalização
+        rdp_thread.finished.connect(lambda sucesso, mensagem: self._on_conexao_finalizada(thread_id, sucesso, mensagem))
+        rdp_thread.start()
         
         # Desabilitar botão conectar
-        self.btn_conectar.setEnabled(False)
-        self.btn_conectar.setText("Conectando...")
+        #self.btn_conectar.setEnabled(False)
+        #self.btn_conectar.setText("Conectando...")
     
-    def _on_conexao_finalizada(self, sucesso: bool, mensagem: str):
+    def _on_conexao_finalizada(self, thread_id: str, sucesso: bool, mensagem: str):
         """Chamado quando conexão RDP termina"""
+        # DECREMENTAR CONTADOR DE CONEXÕES - AQUI ESTÁ O PONTO CRUCIAL
+        self.decrementar_conexoes()
+
+         # Remova a thread do dicionário
+        if thread_id in self.rdp_threads:
+            thread = self.rdp_threads.pop(thread_id)
+            thread.deleteLater() # Limpa o objeto da memória
+
         # Reabilitar interface
         self.btn_conectar.setEnabled(True)
         self.btn_conectar.setText("Conectar")
@@ -438,10 +546,8 @@ class RDPConnectorWindow(QMainWindow):
             self._notificar("RDP Connector", f"Erro: {mensagem}", "error")
             logger.error(f"Erro na conexão: {mensagem}")
         
-        # Limpar thread
-        if self.rdp_thread:
-            self.rdp_thread.deleteLater()
-            self.rdp_thread = None
+        # Limpar thread CORRETAMENTE
+        self._limpar_thread_rdp()
     
     def _notificar(self, titulo: str, mensagem: str, tipo: str = "information"):
         """Envia notificação (desktop ou tray)"""
@@ -517,14 +623,17 @@ class RDPConnectorWindow(QMainWindow):
         self.logs_window.activateWindow()
     
     def closeEvent(self, event):
-        """Evento de fechamento da janela"""
+        """Evento de fechamento da janela - MÉTODO MODIFICADO"""
         if self._fechar_de_verdade:
+            # Garantir que threads sejam finalizadas antes de fechar
+            if not self._limpar_thread_rdp():
+                logger.warning("Forçando saída mesmo com thread ativa")
             self._salvar_configuracoes()
             event.accept()
             return
 
         # Se há conexão ativa, perguntar se quer sair
-        if self.rdp_thread and self.rdp_thread.isRunning():
+        if self.conexoes_ativas > 0:
             resposta = QMessageBox.question(
                 self, "Conexão Ativa", 
                 "Há uma conexão RDP ativa. Deseja realmente sair?",
@@ -532,9 +641,8 @@ class RDPConnectorWindow(QMainWindow):
             )
             
             if resposta == QMessageBox.StandardButton.Yes:
-                self.rdp_thread.terminate()
-                self.rdp_thread.wait(3000)
-                self._salvar_configuracoes()
+                self._limpar_thread_rdp()
+                self.sair_aplicacao()
                 event.accept()
             else:
                 event.ignore()
@@ -545,8 +653,10 @@ class RDPConnectorWindow(QMainWindow):
             self.hide()
             self._notificar("RDP Connector", "Aplicativo minimizado para a bandeja")
             event.ignore()
+            # Verificar se deve sair completamente
+            self.verificar_saida_completa()
         else:
-            self._salvar_configuracoes()
+            self.sair_aplicacao()
             event.accept()
 
     def changeEvent(self, event):
@@ -566,7 +676,7 @@ class RDPConnectorWindow(QMainWindow):
         self.activateWindow()
 
     def close(self):
-        """Sair da aplicação explicitamente"""
+        """Sair da aplicação explicitamente - MÉTODO MODIFICADO"""
         print("Sinal sair_aplicacao recebido → encerrando de verdade")
         self._fechar_de_verdade = True
         super().close()
