@@ -11,7 +11,7 @@ from pathlib import Path
 
 try:
     from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
-    from PySide6.QtCore import Qt, QSharedMemory, QTimer
+    from PySide6.QtCore import QSharedMemory, QTimer
 except ImportError:
     print("Erro: PySide6 não está instalado.")
     print("Instale com: pip install PySide6")
@@ -21,7 +21,7 @@ except ImportError:
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from core.utils import setup_logging
+from core.utils import setup_logging, verificar_comando_disponivel
 from gui.main_window import RDPConnectorWindow
 
 # Variável global para manter a referência da memória compartilhada
@@ -52,92 +52,63 @@ def main():
     logger = setup_logging()
     logger.info("=== RDP Connector Pro iniciado ===")
 
-    # Registrar função de cleanup para ser executada na saída
-    atexit.register(cleanup_shared_memory)
-    
-    # Registrar handlers para sinais do sistema
+    # Ativar handler para sinais do sistema para fechar corretamente
     signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
 
-    # Criar aplicação Qt
-    app = QApplication(sys.argv)
-    app.setApplicationName("RDP Connector Pro")
-    app.setApplicationVersion("1.0")
-    app.setOrganizationName("RDPConnector")
+    # Adicionar diretório core ao path
+    sys.path.insert(0, str(PROJECT_ROOT / "core"))
 
-    # --- VERIFICAÇÃO DE INSTÂNCIA ÚNICA ---
-    key = "RDPConnectorPro-SingleInstance"
-    shared_memory = QSharedMemory(key)
+    # Criar um identificador único para a aplicação
+    app_id = '{b6166164-9b26-4c4f-9e7d-1c39c277f9c8}'
+    shared_memory = QSharedMemory(app_id)
 
+    # Tentar anexar à memória compartilhada. Se falhar, outra instância está rodando.
     if shared_memory.attach():
-        logger.warning("Outra instância da aplicação já está em execução. Encerrando.")
-        QMessageBox.warning(None, "RDP Connector Pro", 
-                            "A aplicação já está em execução. Encerrando esta nova instância.")
+        logger.warning("Outra instância já está rodando. Encerrando.")
+        QMessageBox.warning(None, "RDP Connector Pro",
+                            "Outra instância da aplicação já está rodando. Encerrando.")
         return 0
 
+    # Criar a memória compartilhada e iniciar o aplicativo
     if not shared_memory.create(1):
-        logger.error("Falha ao criar o segmento de memória compartilhada. Encerrando.")
-        QMessageBox.critical(None, "Erro Crítico", 
-                             "Falha ao inicializar a aplicação (memória compartilhada).")
-        return 1
-    
-    logger.info("Verificação de instância única concluída. Primeira instância.")
-    
-    # Não fechar quando a última janela é fechada (por causa do system tray)
+        # Se a criação falhar por alguma razão
+        logger.warning("Falha ao criar memória compartilhada. Pode ser por permissão.")
+        if verificar_comando_disponivel("notify-send"):
+            verificar_comando_disponivel(
+                "Falha ao iniciar o aplicativo",
+                "Falha ao criar memória compartilhada. Por favor, reinicie a máquina."
+            )
+
+    # Garantir que a memória compartilhada seja limpa na saída
+    atexit.register(cleanup_shared_memory)
+
+    # Criar a aplicação e a janela
+    app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
-    
-    # Verificar suporte ao system tray
-    if not QSystemTrayIcon.isSystemTrayAvailable():
-        QMessageBox.critical(None, "Sistema Tray", 
-                           "Sistema não suporta ícone na bandeja do sistema.")
-    
-    # Timer para verificar se a aplicação deve continuar rodando
-    cleanup_timer = QTimer()
-    cleanup_timer.timeout.connect(lambda: None)  # Apenas mantém o loop ativo
-    cleanup_timer.start(1000)  # Verifica a cada segundo
-    
+
     try:
-        # Criar janela principal
         window = RDPConnectorWindow()
-        
-        # Conectar sinal de saída da aplicação para limpeza
-        app.aboutToQuit.connect(cleanup_shared_memory)
-        
-        # Configurar callback para quando a aplicação deveria realmente sair
-        def verificar_saida_real():
-            """Verifica se a aplicação deve realmente sair"""
-            logger.info("Verificando saída real da aplicação...")
-            
-            # Garantir que todas as threads RDP sejam finalizadas
-            if hasattr(window, 'rdp_thread') and window.rdp_thread:
-                logger.info("Aguardando finalização de thread RDP...")
-                if not window._limpar_thread_rdp():
-                    logger.warning("Thread RDP não finalizou, forçando saída")
-            
-            # Pequena pausa para permitir limpeza
-            QTimer.singleShot(500, app.quit)
-        
-        # Conectar verificação de saída
-        window.aplicacao_deve_sair.connect(verificar_saida_real)
-        
-        window.show()
-        
-        logger.info("Interface inicializada com sucesso")
-        
-        # Executar aplicação
-        result = app.exec()
-        
-        logger.info("Aplicação encerrada normalmente")
-        return result
-        
-    except Exception as e:
-        logger.exception("Erro crítico na aplicação")
-        QMessageBox.critical(None, "Erro Crítico", 
-                           f"Erro crítico na aplicação: {str(e)}")
+    except ImportError as e:
+        logger.exception(f"Erro de importação ao iniciar: {e}")
+        QMessageBox.critical(None, "Erro de Inicialização",
+                             f"Erro: {e}.\nVerifique se todas as bibliotecas estão instaladas.")
         return 1
-    finally:
-        # Garantir limpeza mesmo em caso de exceção
-        cleanup_shared_memory()
+
+    # Conectar o sinal de saída da aplicação para limpeza
+    app.aboutToQuit.connect(cleanup_shared_memory)
+    
+    # Conectar a janela a verificação de saída real
+    window.aplicacao_deve_sair.connect(window.sair_aplicacao)
+
+    window.show()
+
+    logger.info("Interface inicializada com sucesso")
+
+    # Executar aplicação
+    result = app.exec()
+
+    logger.info("Aplicação encerrada normalmente")
+    return result
 
 if __name__ == "__main__":
     sys.exit(main())

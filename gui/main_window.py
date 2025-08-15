@@ -18,11 +18,10 @@ except ImportError as e:
 
 from core.servidores import get_servidor_manager
 from core.settings import get_settings_manager, get_configuracoes_app
-from core.rdp import RDPThread, RDPConnector, criar_opcoes_padrao
+from core.rdp import RDPThread, criar_opcoes_padrao
 from core.utils import SOM_MAP, RESOLUCAO_MAP, QUALIDADE_MAP, notificar_desktop, verificar_comando_disponivel
 
 from .gerenciador import GerenciadorServidoresWidget
-from .senha_dialog import PasswordManagerDialog
 from .logs_window import LogsWindow
 from .system_tray import SystemTrayManager
 
@@ -570,8 +569,9 @@ class RDPConnectorWindow(QMainWindow):
             'resolucao': self.combo_resolucao.currentText(),
             'qualidade': self.combo_qualidade.currentText(),
             'salvar_senha': self.check_salvar_senha.isChecked(),
-            'geometry': self.saveGeometry(),
-            'windowState': self.saveState()
+            #Não quero geometria nem estado da Janela
+            #'geometry': self.saveGeometry(),
+            #'windowState': self.saveState()
         }
         
         self.settings_manager.salvar_configuracao_interface(config)
@@ -605,11 +605,11 @@ class RDPConnectorWindow(QMainWindow):
             self.combo_qualidade.setCurrentText(config['qualidade'])
         
         # Geometria da janela
-        if config.get('geometry'):
-            self.restoreGeometry(config['geometry'])
-        
-        if config.get('windowState'):
-            self.restoreState(config['windowState'])
+        #if config.get('geometry'):
+        #    self.restoreGeometry(config['geometry'])
+        #
+        #if config.get('windowState'):
+        #    self.restoreState(config['windowState'])
         
         logger.debug("Configurações restauradas")
     

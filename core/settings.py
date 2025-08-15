@@ -57,11 +57,11 @@ class SettingsManager:
                     self.settings.setValue(opcao, dados[opcao])
             
             # Geometria da janela
-            if 'geometry' in dados:
-                self.settings.setValue("geometry", dados['geometry'])
-            
-            if 'windowState' in dados:
-                self.settings.setValue("windowState", dados['windowState'])
+            #if 'geometry' in dados:
+            #    self.settings.setValue("geometry", dados['geometry'])
+            #
+            #if 'windowState' in dados:
+            #    self.settings.setValue("windowState", dados['windowState'])
             
             logger.debug("Configurações da interface salvas")
             
@@ -95,8 +95,8 @@ class SettingsManager:
             config['qualidade'] = self.settings.value("qualidade", "Broadband")
             
             # Geometria da janela
-            config['geometry'] = self.settings.value("geometry")
-            config['windowState'] = self.settings.value("windowState")
+            #config['geometry'] = self.settings.value("geometry")
+            #config['windowState'] = self.settings.value("windowState")
             
             logger.debug("Configurações da interface carregadas")
             

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, Tuple, Optional
 
 try:
-    from PySide6.QtWidgets import QSystemTrayIcon, QMenu, QMessageBox
+    from PySide6.QtWidgets import QSystemTrayIcon, QMenu
     from PySide6.QtCore import QObject, Signal
     from PySide6.QtGui import QIcon, QPixmap, QAction
 except ImportError as e:

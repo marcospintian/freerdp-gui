@@ -236,41 +236,7 @@ class LogViewer:
         logs_window.activateWindow()
         
         return logs_window
-    
-    @staticmethod
-    def get_recent_logs(lines: int = 100) -> str:
-        """
-        Obtém linhas recentes dos logs
-        
-        Args:
-            lines: Número de linhas para obter
-            
-        Returns:
-            String com logs recentes
-        """
-        try:
-            log_path = get_log_path()
-            
-            if not arquivo_existe(log_path):
-                return "Arquivo de log não encontrado"
-            
-            content = ler_arquivo_texto(log_path)
-            if content is None:
-                return "Erro ao ler arquivo de log"
-            
-            # Obter últimas N linhas
-            log_lines = content.splitlines()
-            if len(log_lines) > lines:
-                log_lines = log_lines[-lines:]
-            
-            return '\n'.join(log_lines)
-            
-        except Exception as e:
-            logger.exception("Erro ao obter logs recentes")
-            return f"Erro ao obter logs: {str(e)}"
-    
-    @staticmethod
-    def clear_logs() -> bool:
+
         """
         Limpa arquivo de logs
         
