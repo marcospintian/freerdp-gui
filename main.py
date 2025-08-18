@@ -8,10 +8,11 @@ import logging
 import atexit
 import signal
 from pathlib import Path
+import subprocess
 
 try:
-    from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
-    from PySide6.QtCore import QSharedMemory, QTimer
+    from PySide6.QtWidgets import QApplication, QMessageBox
+    from PySide6.QtCore import QSharedMemory
 except ImportError:
     print("Erro: PySide6 não está instalado.")
     print("Instale com: pip install PySide6")
@@ -24,7 +25,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from core.utils import setup_logging, verificar_comando_disponivel
 from gui.main_window import RDPConnectorWindow
 
-# Variável global para manter a referência da memória compartilhada
+# Variáveis globais
 shared_memory = None
 logger = None
 
@@ -48,11 +49,15 @@ def main():
     """Função principal da aplicação"""
     global shared_memory, logger
 
+    # Criar a aplicação Qt primeiro
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
+
     # Configurar logging
     logger = setup_logging()
     logger.info("=== RDP Connector Pro iniciado ===")
 
-    # Ativar handler para sinais do sistema para fechar corretamente
+    # Ativar handler para sinais do sistema
     signal.signal(signal.SIGINT, signal_handler)
 
     # Adicionar diretório core ao path
@@ -62,30 +67,35 @@ def main():
     app_id = '{b6166164-9b26-4c4f-9e7d-1c39c277f9c8}'
     shared_memory = QSharedMemory(app_id)
 
-    # Tentar anexar à memória compartilhada. Se falhar, outra instância está rodando.
+    # Forçar detach se houver memória “fantasma”
+    if shared_memory.isAttached():
+        logger.warning("Memória compartilhada fantasma encontrada. Liberando...")
+        shared_memory.detach()
+
+    # Tentar anexar à memória compartilhada. Se falhar, outra instância está rodando
     if shared_memory.attach():
         logger.warning("Outra instância já está rodando. Encerrando.")
         QMessageBox.warning(None, "RDP Connector Pro",
                             "Outra instância da aplicação já está rodando. Encerrando.")
         return 0
 
-    # Criar a memória compartilhada e iniciar o aplicativo
+    # Criar a memória compartilhada
     if not shared_memory.create(1):
-        # Se a criação falhar por alguma razão
         logger.warning("Falha ao criar memória compartilhada. Pode ser por permissão.")
         if verificar_comando_disponivel("notify-send"):
-            verificar_comando_disponivel(
+            subprocess.run([
+                "notify-send",
                 "Falha ao iniciar o aplicativo",
                 "Falha ao criar memória compartilhada. Por favor, reinicie a máquina."
-            )
+            ])
+        QMessageBox.critical(None, "Erro",
+                             "Falha ao criar memória compartilhada. Reinicie a máquina.")
+        return 1
 
     # Garantir que a memória compartilhada seja limpa na saída
     atexit.register(cleanup_shared_memory)
 
-    # Criar a aplicação e a janela
-    app = QApplication(sys.argv)
-    app.setQuitOnLastWindowClosed(False)
-
+    # Criar a janela principal
     try:
         window = RDPConnectorWindow()
     except ImportError as e:
@@ -94,19 +104,15 @@ def main():
                              f"Erro: {e}.\nVerifique se todas as bibliotecas estão instaladas.")
         return 1
 
-    # Conectar o sinal de saída da aplicação para limpeza
+    # Conectar sinais de encerramento
     app.aboutToQuit.connect(cleanup_shared_memory)
-    
-    # Conectar a janela a verificação de saída real
     window.aplicacao_deve_sair.connect(window.sair_aplicacao)
 
     window.show()
-
     logger.info("Interface inicializada com sucesso")
 
     # Executar aplicação
     result = app.exec()
-
     logger.info("Aplicação encerrada normalmente")
     return result
 
