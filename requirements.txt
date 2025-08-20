@@ -6,9 +6,6 @@ PySide6>=6.5.0
 # Criptografia para senhas
 cryptography>=41.0.0
 
-# Opcional: Para compatibilidade com versões antigas (migração do keyring)
-keyring>=24.0.0
-
 # Dependências do sistema (instalar via package manager):
 # - freerdp2-x11 (Ubuntu/Debian: sudo apt install freerdp2-x11)
 # - libnotify-bin (Ubuntu/Debian: sudo apt install libnotify-bin) [opcional]
