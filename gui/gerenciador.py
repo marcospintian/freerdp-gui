@@ -167,8 +167,8 @@ class GerenciadorServidoresWidget(QWidget):
                 self.input_ip.setText(ip)
                 self.input_usuario.setText(usuario)
                 
-                # Tentar carregar senha do keyring
-                senha = self._obter_senha_keyring(nome, usuario)
+                # Tentar carregar senha criptografada do servidores.ini
+                senha = self._obter_senha_criptografada(nome)
                 self.input_senha.setText(senha)
             else:
                 self._limpar_campos()
@@ -293,7 +293,7 @@ class GerenciadorServidoresWidget(QWidget):
                 return False
             
             # Migrar senha no keyring se necessário
-            self._migrar_senha_keyring(self.nome_sendo_editado, nome, usuario)
+                # Não é mais necessário migrar senha do keyring
         
         # Atualizar dados do servidor
         if not self.servidor_manager.salvar_servidor(nome, ip, usuario):
@@ -302,7 +302,7 @@ class GerenciadorServidoresWidget(QWidget):
         
         # Atualizar senha se fornecida
         if senha:
-            self._salvar_senha_keyring(nome, usuario, senha)
+                self._salvar_senha_criptografada(nome, senha)
         
         return True
     
@@ -396,9 +396,8 @@ class GerenciadorServidoresWidget(QWidget):
                 return
             
             # Remover senha do keyring
-            if dados:
-                _, usuario = dados
-                self._remover_senha_keyring(nome, usuario)
+                if dados:
+                    self._remover_senha_criptografada(nome)
             
             # Atualizar interface
             self._recarregar_servidores()

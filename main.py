@@ -46,6 +46,10 @@ def signal_handler(signum, frame):
     sys.exit(0)
 
 def main():
+    # Migrar senhas em texto claro para criptografadas, se necessário
+    from core.migracao_senhas import migrar_senhas_ini
+    ini_path = str(PROJECT_ROOT / 'servidores.ini')
+    migrar_senhas_ini(ini_path, logger)
     """Função principal da aplicação"""
     global shared_memory, logger
 

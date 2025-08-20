@@ -12,7 +12,7 @@ Uma aplicação gráfica em Python para gerenciar e conectar via RDP de forma si
 - **🌟 System Tray Inteligente**: Comportamento aprimorado para minimização e restauração
 - **📱 Notificações Desktop**: Integração com sistema de notificações do Linux
 - **⚡ Conexões Rápidas**: Conectar diretamente pelo system tray com senhas salvas
-- **🔐 Gerenciamento Seguro de Senhas**: Integração completa com keyring do sistema
+- **🔐 Gerenciamento Seguro de Senhas**: Senhas criptografadas localmente no arquivo servidores.ini (AES-256)
 - **📊 Logging Avançado**: Sistema de logs com rotação automática e visualizador integrado
 - **🔄 Auto-salvamento**: Configurações salvas automaticamente a cada conexão
 - **📈 Histórico de Conexões**: Rastreamento das últimas conexões realizadas
@@ -50,7 +50,7 @@ rdp_connector/
 
 - **Interface gráfica moderna** com abas organizadas e design intuitivo
 - **Gerenciamento completo de servidores** via arquivo INI com validação
-- **Armazenamento ultra-seguro de senhas** usando keyring nativo do sistema
+- **Armazenamento ultra-seguro de senhas** com criptografia AES-256 local no arquivo servidores.ini
 - **System tray inteligente** com menu dinâmico e conexões rápidas
 - **Sistema de logs profissional** com visualizador em tempo real
 - **Configurações persistentes** com auto-salvamento
@@ -71,7 +71,7 @@ rdp_connector/
 ### 🔐 Segurança e Estabilidade
 
 - **Senhas NUNCA armazenadas** em texto plano
-- **Integração nativa** com keyring do sistema operacional
+- **Senhas criptografadas localmente** (AES-256) no arquivo servidores.ini
 - **Logs sanitizados** sem dados sensíveis
 - **Validação rigorosa** de todos os dados de entrada
 - **Cleanup automático** de recursos e threads
@@ -83,7 +83,7 @@ rdp_connector/
 
 - **Python 3.8+** (testado até 3.12)
 - **xfreerdp** (Linux) - para conexões RDP
-- **Sistema com keyring** suportado (GNOME Keyring, KDE Wallet, etc.)
+- Sem dependência de keyring: totalmente portável
 - **Sistema de notificações** (notify-send - opcional)
 
 ### 📚 Dependências Python
@@ -92,9 +92,9 @@ rdp_connector/
 pip install -r requirements.txt
 ```
 
-**Dependências principais:**
+-**Dependências principais:**
 - `PySide6` - Interface gráfica moderna
-- `keyring` - Gerenciamento seguro de senhas
+- `cryptography` - Criptografia simétrica AES para senhas
 - `configparser` - Manipulação de arquivos INI
 
 ### 🐧 Instalação do xfreerdp (Linux)
@@ -141,7 +141,7 @@ python main.py
 - Opções para limpar, salvar e exportar logs
 
 #### 🔐 Gerenciamento de Senhas
-- Senhas armazenadas com segurança no keyring do sistema
+- Senhas armazenadas de forma criptografada (AES-256) no arquivo servidores.ini
 - Opção de salvar senha automaticamente após conexão bem-sucedida
 - Gerenciamento individual por servidor
 
@@ -206,13 +206,13 @@ python main.py
 
 #### `gerenciador.py` ✅ **ESTÁVEL**
 - Interface CRUD completa para servidores
-- Integração total com keyring
+- Senhas criptografadas localmente (AES-256)
 - Validação de entrada robusta
 - Feedback visual para todas as operações
 
 #### `senha_dialog.py` 🔐 **MELHORADO**
 - Dialog simplificado para entrada de senhas
-- Integração com keyring do sistema
+- Senhas nunca ficam em texto claro
 - Função helper para solicitação rápida
 
 ## ⚙️ Configuração Avançada
@@ -264,7 +264,7 @@ usuario = testuser
 
 ### 🔐 Proteção de Dados
 - **Senhas**: JAMAIS armazenadas em texto plano
-- **Keyring**: Integração nativa com wallet do sistema
+- **Senhas criptografadas** com AES-256 no arquivo servidores.ini
 - **Logs**: Completamente sanitizados, sem dados sensíveis
 - **Validação**: Verificação rigorosa de todos os inputs
 - **Memória**: Limpeza automática de dados sensíveis
@@ -325,13 +325,13 @@ Este projeto está sob licença **MIT**. Veja arquivo `LICENSE` para detalhes co
 ### 🐛 Issues Atuais
 - System tray pode não funcionar em alguns ambientes Linux minimalistas
 - xfreerdp requer configurações específicas para algumas distribuições
-- Keyring pode precisar de configuração manual em sistemas headless
+- (Removido) Keyring pode precisar de configuração manual em sistemas headless
 - Alguns gestores de janela podem não suportar notificações desktop
 
 ### 🔧 Soluções e Workarounds
 - **System tray**: Verificar se `libappindicator` está instalado
 - **xfreerdp**: Consultar documentação específica da distribuição
-- **Keyring**: Configurar `gnome-keyring` ou `kwallet` manualmente
+- (Removido) **Keyring**: Configurar `gnome-keyring` ou `kwallet` manualmente
 - **Notificações**: Instalar `libnotify-bin` ou similar
 
 ## 📈 Métricas do Projeto
