@@ -66,13 +66,16 @@ def verificar_dependencias():
         erro += "\n\nInstale as dependências e tente novamente."
         
         # Tentar notificação desktop
-        if verificar_comando_disponivel("notify-send"):
-            subprocess.run([
-                "notify-send", 
-                "-i", "error",
-                "FreeRDP-GUI - Dependências", 
-                "Dependências faltando. Veja o terminal."
-            ])
+        try:
+            if verificar_comando_disponivel("notify-send"):
+                subprocess.run([
+                    "notify-send", 
+                    "-i", "error",
+                    "FreeRDP-GUI - Dependências", 
+                    "Dependências faltando. Veja o terminal."
+                ], timeout=5)
+        except Exception:
+            pass  # Ignorar erro de notificação
         
         return False, erro
     
@@ -95,9 +98,7 @@ def main():
 
     # Ativar handler para sinais do sistema
     signal.signal(signal.SIGINT, signal_handler)
-
-    # Adicionar diretório core ao path
-    sys.path.insert(0, str(PROJECT_ROOT / "core"))
+    signal.signal(signal.SIGTERM, signal_handler)
 
     # Verificar dependências críticas
     deps_ok, deps_erro = verificar_dependencias()
@@ -106,35 +107,40 @@ def main():
         QMessageBox.critical(None, "Dependências Faltando", deps_erro)
         return 1
 
-    # Criar um identificador único para a aplicação
-    app_id = '{freerdp-gui-b6166164-9b26-4c4f-9e7d-1c39c277f9c8}'
+    # Verificar instância única
+    app_id = 'freerdp-gui-b6166164-9b26-4c4f-9e7d-1c39c277f9c8'
     shared_memory = QSharedMemory(app_id)
 
     # Forçar detach se houver memória "fantasma"
     if shared_memory.isAttached():
-        logger.warning("Memória compartilhada fantasma encontrada. Liberando...")
+        logger.warning("Memória compartilhada fantasma encontrada, liberando...")
         shared_memory.detach()
 
-    # Tentar anexar à memória compartilhada. Se falhar, outra instância está rodando
+    # Tentar anexar à memória compartilhada. Se conseguir, outra instância está rodando
     if shared_memory.attach():
-        logger.warning("Outra instância já está rodando. Encerrando.")
-        QMessageBox.warning(None, "FreeRDP-GUI",
-                            "Outra instância da aplicação já está rodando. Encerrando.")
+        logger.warning("Outra instância já está rodando")
+        QMessageBox.information(None, "FreeRDP-GUI",
+                               "Outra instância da aplicação já está rodando.\n\n"
+                               "Verifique a bandeja do sistema ou feche a instância anterior.")
         return 0
 
     # Criar a memória compartilhada
     if not shared_memory.create(1):
-        logger.warning("Falha ao criar memória compartilhada. Pode ser por permissão.")
-        if verificar_comando_disponivel("notify-send"):
-            subprocess.run([
-                "notify-send",
-                "-i", "error",
-                "FreeRDP-GUI - Erro",
-                "Falha ao criar memória compartilhada. Por favor, reinicie a máquina."
-            ])
-        QMessageBox.critical(None, "Erro",
-                             "Falha ao criar memória compartilhada. Reinicie a máquina.")
-        return 1
+        logger.warning("Falha ao criar memória compartilhada")
+        # Tentar notificação
+        try:
+            if verificar_comando_disponivel("notify-send"):
+                subprocess.run([
+                    "notify-send",
+                    "-i", "error",
+                    "FreeRDP-GUI - Aviso",
+                    "Possível problema de permissões. Aplicação pode não funcionar corretamente."
+                ], timeout=5)
+        except Exception:
+            pass
+        
+        # Não falhar por causa da memória compartilhada, apenas avisar
+        logger.warning("Continuando sem controle de instância única")
 
     # Garantir que a memória compartilhada seja limpa na saída
     atexit.register(cleanup_shared_memory)
@@ -142,38 +148,75 @@ def main():
     # Criar a janela principal
     try:
         window = FreeRDPGUIWindow()
+        logger.info("Janela principal criada com sucesso")
     except ImportError as e:
-        logger.exception(f"Erro de importação ao iniciar: {e}")
+        logger.exception(f"Erro de importação: {e}")
         QMessageBox.critical(None, "Erro de Inicialização",
-                             f"Erro: {e}.\nVerifique se todas as bibliotecas estão instaladas.")
+                           f"Erro de dependência: {e}\n\n"
+                           f"Verifique se todas as bibliotecas estão instaladas:\n"
+                           f"• pip install PySide6\n"
+                           f"• pip install cryptography")
         return 1
     except Exception as e:
-        logger.exception(f"Erro inesperado ao iniciar: {e}")
+        logger.exception(f"Erro inesperado ao criar janela: {e}")
         QMessageBox.critical(None, "Erro de Inicialização",
-                             f"Erro inesperado: {e}")
+                           f"Erro inesperado: {e}\n\n"
+                           f"Verifique os logs para mais detalhes.")
         return 1
 
     # Conectar sinais de encerramento
     app.aboutToQuit.connect(cleanup_shared_memory)
-    window.aplicacao_deve_sair.connect(window.sair_aplicacao)
+    
+    # Conectar sinal personalizado da janela principal
+    try:
+        window.aplicacao_deve_sair.connect(app.quit)
+    except AttributeError:
+        logger.warning("Sinal aplicacao_deve_sair não encontrado na janela principal")
 
     # Mostrar janela
-    window.show()
-    logger.info("Interface inicializada com sucesso")
-    
-    # Notificação de início
-    if verificar_comando_disponivel("notify-send"):
-        subprocess.run([
-            "notify-send",
-            "-i", "krdc",
-            "FreeRDP-GUI",
-            "Aplicação iniciada com sucesso"
-        ])
+    try:
+        window.show()
+        logger.info("Interface inicializada com sucesso")
+        
+        # Notificação de início (opcional)
+        try:
+            if verificar_comando_disponivel("notify-send"):
+                subprocess.run([
+                    "notify-send",
+                    "-i", "krdc",
+                    "FreeRDP-GUI",
+                    "Aplicação iniciada com sucesso"
+                ], timeout=5)
+        except Exception:
+            pass  # Ignorar erro de notificação
+            
+    except Exception as e:
+        logger.exception(f"Erro ao mostrar janela: {e}")
+        QMessageBox.critical(None, "Erro",
+                           f"Erro ao inicializar interface: {e}")
+        return 1
 
     # Executar aplicação
-    result = app.exec()
-    logger.info("Aplicação encerrada normalmente")
-    return result
+    try:
+        result = app.exec()
+        logger.info(f"Aplicação encerrada com código: {result}")
+        return result
+    except KeyboardInterrupt:
+        logger.info("Aplicação interrompida pelo usuário (Ctrl+C)")
+        return 0
+    except Exception as e:
+        logger.exception(f"Erro durante execução: {e}")
+        return 1
+    finally:
+        cleanup_shared_memory()
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        exit_code = main()
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\nAplicação interrompida pelo usuário")
+        sys.exit(0)
+    except Exception as e:
+        print(f"Erro fatal: {e}")
+        sys.exit(1)

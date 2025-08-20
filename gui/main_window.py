@@ -1,5 +1,5 @@
 """
-Janela principal da aplicação FreeRDP-GUI
+Janela principal da aplicação FreeRDP-GUI com master password opcional
 """
 
 import logging
@@ -55,57 +55,33 @@ class FreeRDPGUIWindow(QMainWindow):
         # Dados
         self.servidores = {}
         
-        # Verificar se precisa configurar master password
-        self._verificar_master_password()
-        
         # Inicialização
         self._init_ui()
         self._init_system_tray()
         self._carregar_servidores()
         self._restaurar_configuracoes()
         
-        # Migrar senhas do keyring se necessário
-        self._migrar_keyring_se_necessario()
+        # Mostrar info sobre o sistema de senhas (apenas se for primeira vez)
+        self._mostrar_info_inicial_senhas()
         
         logger.info("Janela principal inicializada")
     
-    def _verificar_master_password(self):
-        """Verifica se precisa configurar master password"""
-        # Verificar se existem senhas criptografadas
-        servidores_com_senha = self.servidor_manager.listar_servidores_com_senha()
+    def _mostrar_info_inicial_senhas(self):
+        """Mostra informação inicial sobre o sistema de senhas"""
+        status = self.crypto_manager.get_status_info()
         
-        if servidores_com_senha and not self.crypto_manager.is_unlocked():
-            # Tentar solicitar master password
-            senha = solicitar_master_password(self, is_first_time=False)
-            if not senha:
-                # Se cancelou, mostrar aviso
-                QMessageBox.warning(
-                    self, "Aviso", 
-                    f"Existem {len(servidores_com_senha)} senhas criptografadas salvas.\n"
-                    "Você pode configurar a master password mais tarde no menu Senhas."
-                )
-        elif not servidores_com_senha:
-            # Primeira execução ou sem senhas salvas
-            logger.info("Primeira execução ou sem senhas salvas")
+        # Se não tem master password personalizada e não tem dados ainda, mostrar info
+        if not status['has_custom_password'] and not status['has_encrypted_data']:
+            QMessageBox.information(
+                self, "Sistema de Senhas", 
+                "✅ <b>Sistema de criptografia ativo!</b><br/><br/>"
+                "• Suas senhas RDP serão salvas <b>criptografadas</b> automaticamente<br/>"
+                "• <b>Opcional:</b> Configure uma Master Password no menu 'Senhas' para maior segurança<br/>"
+                "• Sem master password: suas senhas ficam criptografadas com chave padrão<br/><br/>"
+                "<i>💡 Dica: A master password permite trancar/destrancar as senhas quando quiser</i>"
+            )
     
-    def _migrar_keyring_se_necessario(self):
-        """Migra senhas do keyring se necessário e se crypto estiver desbloqueado"""
-        if not self.crypto_manager.is_unlocked():
-            return
-        
-        try:
-            migradas = self.servidor_manager.migrar_keyring_para_crypto()
-            if migradas > 0:
-                QMessageBox.information(
-                    self, "Migração", 
-                    f"{migradas} senhas foram migradas do keyring para o novo sistema de criptografia."
-                )
-                # Recarregar servidores para refletir mudanças
-                self._carregar_servidores()
-        except Exception as e:
-            logger.error(f"Erro durante migração do keyring: {e}")
-    
-    # Métodos para controle de conexões (mantidos do código anterior)
+    # Métodos para controle de conexões (mantidos iguais)
     def incrementar_conexoes(self):
         """Incrementa contador de conexões ativas"""
         self.conexoes_ativas += 1
@@ -182,7 +158,7 @@ class FreeRDPGUIWindow(QMainWindow):
     def _init_ui(self):
         """Inicializa interface do usuário"""
         self.setWindowTitle("FreeRDP-GUI")
-        self.setFixedSize(500, 650)  # Aumentei um pouco para acomodar novos botões
+        self.setFixedSize(500, 650)
         
         # Widget central
         central_widget = QWidget()
@@ -225,9 +201,14 @@ class FreeRDPGUIWindow(QMainWindow):
         change_action.triggered.connect(self._alterar_master_password)
         senha_menu.addAction(change_action)
         
+        # Remover Master Password
+        remove_action = QAction("&Remover Master Password", self)
+        remove_action.triggered.connect(self._remover_master_password)
+        senha_menu.addAction(remove_action)
+        
         senha_menu.addSeparator()
         
-        # Trancar/Destrancar
+        # Trancar/Destrancar (só se tem master password personalizada)
         self.lock_action = QAction("&Trancar Senhas", self)
         self.lock_action.triggered.connect(self._toggle_crypto_lock)
         senha_menu.addAction(self.lock_action)
@@ -235,7 +216,7 @@ class FreeRDPGUIWindow(QMainWindow):
         senha_menu.addSeparator()
         
         # Status das senhas
-        status_action = QAction("&Status das Senhas...", self)
+        status_action = QAction("&Status do Sistema...", self)
         status_action.triggered.connect(self._mostrar_status_senhas)
         senha_menu.addAction(status_action)
         
@@ -244,14 +225,22 @@ class FreeRDPGUIWindow(QMainWindow):
     
     def _atualizar_menu_senhas(self):
         """Atualiza estado do menu de senhas"""
-        if self.crypto_manager.is_unlocked():
-            self.lock_action.setText("&Trancar Senhas")
-        else:
-            self.lock_action.setText("&Destrancar Senhas")
+        status = self.crypto_manager.get_status_info()
+        
+        # Só mostrar opção de trancar/destrancar se tem master password personalizada
+        self.lock_action.setVisible(status['has_custom_password'])
+        
+        if status['has_custom_password']:
+            if self.crypto_manager.is_unlocked():
+                self.lock_action.setText("&Trancar Senhas")
+            else:
+                self.lock_action.setText("&Destrancar Senhas")
     
     def _configurar_master_password(self):
         """Configura master password pela primeira vez"""
-        if self.crypto_manager.is_unlocked():
+        status = self.crypto_manager.get_status_info()
+        
+        if status['has_custom_password']:
             resposta = QMessageBox.question(
                 self, "Master Password", 
                 "Master password já está configurada.\n\nDeseja alterá-la?",
@@ -261,18 +250,51 @@ class FreeRDPGUIWindow(QMainWindow):
                 self._alterar_master_password()
             return
         
+        # Explicar o sistema antes de configurar
+        resposta = QMessageBox.question(
+            self, "Configurar Master Password",
+            "🔐 <b>Configurar Master Password Personalizada?</b><br/><br/>"
+            "<b>Atualmente:</b> Suas senhas ficam criptografadas com chave padrão<br/>"
+            "<b>Com Master Password:</b> Você pode trancar/destrancar as senhas<br/><br/>"
+            "📝 <b>Vantagens:</b><br/>"
+            "• Controle total sobre acesso às senhas<br/>"
+            "• Pode trancar temporariamente<br/>"
+            "• Segurança adicional<br/><br/>"
+            "⚠️ <b>Importante:</b> Se esquecer a master password, perderá acesso às senhas!<br/><br/>"
+            "Deseja configurar uma master password personalizada?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if resposta != QMessageBox.StandardButton.Yes:
+            return
+        
         # Primeira configuração
         senha = solicitar_master_password(self, is_first_time=True)
         if senha:
             QMessageBox.information(
                 self, "Sucesso", 
-                "Master password configurada com sucesso!\n\n"
-                "Agora suas senhas RDP serão criptografadas automaticamente."
+                "✅ <b>Master Password configurada!</b><br/><br/>"
+                "• Suas senhas foram migradas para a nova chave<br/>"
+                "• Agora você pode trancar/destrancar no menu Senhas<br/>"
+                "• Sistema de criptografia mais seguro ativado"
             )
             self._atualizar_menu_senhas()
+            # Recarregar interface para mostrar novos indicadores
+            self._on_servidor_changed(self.combo_servidor.currentText())
     
     def _alterar_master_password(self):
         """Altera master password existente"""
+        status = self.crypto_manager.get_status_info()
+        
+        if not status['has_custom_password']:
+            QMessageBox.information(
+                self, "Aviso", 
+                "Primeiro configure uma master password personalizada."
+            )
+            self._configurar_master_password()
+            return
+        
         if not self.crypto_manager.is_unlocked():
             QMessageBox.information(
                 self, "Aviso", 
@@ -283,36 +305,117 @@ class FreeRDPGUIWindow(QMainWindow):
         if alterar_master_password(self):
             self._atualizar_menu_senhas()
     
+    def _remover_master_password(self):
+        """Remove master password e volta para chave padrão"""
+        status = self.crypto_manager.get_status_info()
+        
+        if not status['has_custom_password']:
+            QMessageBox.information(
+                self, "Aviso",
+                "Master password personalizada não está configurada.\n\n"
+                "Suas senhas já estão usando criptografia com chave padrão."
+            )
+            return
+        
+        resposta = QMessageBox.question(
+            self, "Remover Master Password",
+            "⚠️ <b>Remover Master Password Personalizada?</b><br/><br/>"
+            "<b>Isso irá:</b><br/>"
+            "• Voltar para criptografia com chave padrão<br/>"
+            "• Remover opção de trancar/destrancar senhas<br/>"
+            "• Re-criptografar todas as senhas existentes<br/><br/>"
+            "<b>Suas senhas continuarão seguras</b> (criptografadas com chave padrão)<br/><br/>"
+            "Tem certeza que deseja continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if resposta != QMessageBox.StandardButton.Yes:
+            return
+        
+        if self.crypto_manager.remove_master_password():
+            QMessageBox.information(
+                self, "Sucesso",
+                "✅ <b>Master Password removida!</b><br/><br/>"
+                "• Voltou para criptografia com chave padrão<br/>"
+                "• Suas senhas continuam seguras<br/>"
+                "• Sistema simplificado ativado"
+            )
+            self._atualizar_menu_senhas()
+            # Recarregar interface
+            self._on_servidor_changed(self.combo_servidor.currentText())
+        else:
+            QMessageBox.critical(
+                self, "Erro",
+                "Erro ao remover master password.\nVerifique os logs para mais detalhes."
+            )
+    
     def _toggle_crypto_lock(self):
-        """Alterna trava do crypto"""
+        """Alterna trava do crypto (só se tem master password personalizada)"""
+        status = self.crypto_manager.get_status_info()
+        
+        if not status['has_custom_password']:
+            QMessageBox.information(
+                self, "Aviso",
+                "Esta funcionalidade requer master password personalizada.\n\n"
+                "Configure uma no menu Senhas > Configurar Master Password."
+            )
+            return
+        
         if self.crypto_manager.is_unlocked():
             # Trancar
             self.crypto_manager.lock()
             self._notificar("FreeRDP-GUI", "Senhas trancadas")
+            # Limpar senhas da interface
+            self._limpar_senhas_interface()
         else:
             # Destrancar
             senha = solicitar_master_password(self)
             if senha:
                 self._notificar("FreeRDP-GUI", "Senhas destrancadas")
+                # Recarregar senhas na interface
+                self._on_servidor_changed(self.combo_servidor.currentText())
         
         self._atualizar_menu_senhas()
     
+    def _limpar_senhas_interface(self):
+        """Limpa senhas da interface quando trancado"""
+        if self.edit_senha.text() and self.edit_senha.text().startswith("[SENHA TRANCADA"):
+            return  # Já está limpo
+        
+        self.edit_senha.clear()
+        self._atualizar_indicador_senha_salva(False)
+    
     def _mostrar_status_senhas(self):
-        """Mostra status das senhas salvas"""
+        """Mostra status detalhado do sistema de senhas"""
+        status = self.crypto_manager.get_status_info()
         servidores_com_senha = self.servidor_manager.listar_servidores_com_senha()
         
-        if not servidores_com_senha:
-            QMessageBox.information(
-                self, "Status das Senhas", 
-                "Nenhuma senha está salva atualmente."
-            )
-            return
+        # Título
+        if status['has_custom_password']:
+            titulo = "🔐 Master Password Personalizada"
+            chave_info = f"Status: {'🔓 Destrancado' if status['is_unlocked'] else '🔒 Trancado'}"
+        else:
+            titulo = "🔑 Chave Padrão"
+            chave_info = "Status: ✅ Sempre ativo (não pode ser trancado)"
         
-        status = f"Senhas salvas para {len(servidores_com_senha)} servidor(es):\n\n"
-        status += "\n".join([f"• {servidor}" for servidor in sorted(servidores_com_senha)])
-        status += f"\n\nStatus: {'🔓 Destrancado' if self.crypto_manager.is_unlocked() else '🔒 Trancado'}"
+        # Senhas
+        if servidores_com_senha:
+            senha_info = f"📊 Senhas salvas: {len(servidores_com_senha)}\n"
+            senha_info += "\n".join([f"   • {servidor}" for servidor in sorted(servidores_com_senha)])
+        else:
+            senha_info = "📊 Nenhuma senha salva"
         
-        QMessageBox.information(self, "Status das Senhas", status)
+        # Sistema
+        sistema_info = f"📁 Diretório: {status['config_dir']}"
+        
+        mensagem = f"<h3>{titulo}</h3><br/>" \
+                  f"{chave_info}<br/><br/>" \
+                  f"{senha_info}<br/><br/>" \
+                  f"{sistema_info}<br/><br/>" \
+                  f"<i>💡 Configure master password personalizada para mais controle</i>"
+        
+        QMessageBox.information(self, "Status do Sistema de Senhas", mensagem)
     
     def _init_aba_conexao(self):
         """Inicializa aba de conexão"""
@@ -380,7 +483,8 @@ class FreeRDPGUIWindow(QMainWindow):
         layout.addWidget(self.check_home)
         
         self.check_salvar_senha = QCheckBox("Salvar senha automaticamente")
-        self.check_salvar_senha.setToolTip("Salva senha criptografada no arquivo de configuração")
+        self.check_salvar_senha.setToolTip("Salva senha criptografada automaticamente")
+        self.check_salvar_senha.setChecked(True)  # Ativado por padrão agora
         layout.addWidget(self.check_salvar_senha)
         
         # Som
@@ -486,32 +590,44 @@ class FreeRDPGUIWindow(QMainWindow):
                 senha_salva = self._obter_senha_criptografada(servidor_nome)
                 if senha_salva:
                     self.edit_senha.setText(senha_salva)
-                    self._atualizar_indicador_senha_salva(True)
+                    self._atualizar_indicador_senha_salva(True, senha_salva.startswith("[SENHA TRANCADA"))
                 else:
                     self.edit_senha.setText("")
                     self._atualizar_indicador_senha_salva(False)
     
-    def _atualizar_indicador_senha_salva(self, tem_senha_salva: bool):
+    def _atualizar_indicador_senha_salva(self, tem_senha_salva: bool, esta_trancada: bool = False):
         """Atualiza indicador visual de senha salva"""
         if tem_senha_salva:
-            self.label_senha_salva.setText("💾")
-            self.label_senha_salva.setToolTip("Senha salva (criptografada)")
+            if esta_trancada:
+                self.label_senha_salva.setText("🔒")
+                self.label_senha_salva.setToolTip("Senha salva mas trancada - desbloqueie no menu Senhas")
+            else:
+                status = self.crypto_manager.get_status_info()
+                if status['has_custom_password']:
+                    self.label_senha_salva.setText("🔐")
+                    self.label_senha_salva.setToolTip("Senha criptografada (Master Password personalizada)")
+                else:
+                    self.label_senha_salva.setText("🔑")
+                    self.label_senha_salva.setToolTip("Senha criptografada (chave padrão)")
             self.label_senha_salva.setVisible(True)
         else:
             self.label_senha_salva.setVisible(False)
     
     def _obter_senha_criptografada(self, nome_servidor: str) -> Optional[str]:
         """Obtém senha criptografada para o servidor"""
-        if not self.crypto_manager.is_unlocked():
-            # Se crypto está trancado, verificar se tem senha salva
+        status = self.crypto_manager.get_status_info()
+        
+        # Se tem master password personalizada mas está trancada
+        if status['has_custom_password'] and not self.crypto_manager.is_unlocked():
             if self.servidor_manager.servidor_tem_senha_salva(nome_servidor):
                 return "[SENHA TRANCADA - Clique em Senhas > Destrancar]"
             return None
         
+        # Sistema sempre funciona (chave padrão ou personalizada destrancada)
         try:
             senha = self.servidor_manager.obter_senha(nome_servidor)
             if senha:
-                logger.info(f"Senha criptografada obtida para: {nome_servidor}")
+                logger.debug(f"Senha criptografada obtida para: {nome_servidor}")
                 return senha
         except Exception as e:
             logger.warning(f"Erro ao obter senha criptografada para {nome_servidor}: {str(e)}")
@@ -526,13 +642,12 @@ class FreeRDPGUIWindow(QMainWindow):
         if servidor_nome == "Manual" or servidor_nome not in self.servidores:
             return
         
-        if not self.crypto_manager.is_unlocked():
-            logger.warning("Não é possível salvar senha - crypto não desbloqueado")
-            return
-        
+        # Sistema sempre pode salvar (chave padrão ou personalizada)
         try:
             if self.servidor_manager.salvar_senha(servidor_nome, senha):
-                logger.info(f"Senha salva automaticamente para: {servidor_nome}")
+                status = self.crypto_manager.get_status_info()
+                tipo_chave = "personalizada" if status['has_custom_password'] else "padrão"
+                logger.info(f"Senha salva automaticamente para: {servidor_nome} (chave {tipo_chave})")
                 self._notificar("FreeRDP-GUI", f"Senha salva automaticamente para {servidor_nome}")
                 self._atualizar_indicador_senha_salva(True)
         except Exception as e:
@@ -630,7 +745,10 @@ class FreeRDPGUIWindow(QMainWindow):
             self.show()
             self.raise_()
             self.activateWindow()
-            self._notificar("FreeRDP-GUI", f"Configure a senha para {servidor}")
+            if senha and senha.startswith("[SENHA TRANCADA"):
+                self._notificar("FreeRDP-GUI", f"Desbloqueie as senhas primeiro")
+            else:
+                self._notificar("FreeRDP-GUI", f"Configure a senha para {servidor}")
             return
         
         # Usar opções da interface
@@ -724,7 +842,7 @@ class FreeRDPGUIWindow(QMainWindow):
         self.check_home.setChecked(config.get('montar_home', False))
         self.check_impressoras.setChecked(config.get('impressoras', False))
         self.check_multimonitor.setChecked(config.get('multimonitor', False))
-        self.check_salvar_senha.setChecked(config.get('salvar_senha', False))
+        self.check_salvar_senha.setChecked(config.get('salvar_senha', True))  # Padrão True agora
         
         # Combos
         if config.get('som'):

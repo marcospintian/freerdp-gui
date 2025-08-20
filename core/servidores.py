@@ -436,65 +436,6 @@ class ServidorManager:
             logger.debug("Configuração recarregada do arquivo INI")
         except Exception as e:
             logger.error(f"Erro ao recarregar configuração: {str(e)}")
-    
-    def migrar_keyring_para_crypto(self) -> int:
-        """
-        Migra senhas do keyring para criptografia local
-        (função de migração para quem já usa versão anterior)
-        
-        Returns:
-            Número de senhas migradas
-        """
-        senhas_migradas = 0
-        
-        try:
-            import keyring
-        except ImportError:
-            logger.info("Keyring não disponível, pulando migração")
-            return 0
-        
-        if not self.crypto_manager.is_unlocked():
-            logger.error("CryptoManager deve estar desbloqueado para migração")
-            return 0
-        
-        try:
-            self.config.read(self.ini_path, encoding='utf-8')
-            
-            for nome_servidor in self.config.sections():
-                # Pular servidores que já têm senha criptografada
-                if self.config.has_option(nome_servidor, 'senha_encrypted'):
-                    continue
-                
-                # Tentar obter senha do keyring
-                try:
-                    usuario = self.config[nome_servidor].get('usuario', '')
-                    if not usuario:
-                        continue
-                    
-                    senha_keyring = keyring.get_password(nome_servidor, usuario)
-                    if senha_keyring:
-                        # Migrar para criptografia local
-                        if self.salvar_senha(nome_servidor, senha_keyring):
-                            # Remover do keyring
-                            try:
-                                keyring.delete_password(nome_servidor, usuario)
-                                senhas_migradas += 1
-                                logger.info(f"Senha migrada do keyring para crypto: {nome_servidor}")
-                            except Exception as e:
-                                logger.warning(f"Erro ao remover senha do keyring para {nome_servidor}: {e}")
-                        else:
-                            logger.error(f"Erro ao migrar senha para {nome_servidor}")
-                
-                except Exception as e:
-                    logger.warning(f"Erro ao migrar senha de {nome_servidor}: {e}")
-            
-            if senhas_migradas > 0:
-                logger.info(f"Migração concluída: {senhas_migradas} senhas migradas do keyring")
-            
-        except Exception as e:
-            logger.error(f"Erro durante migração do keyring: {e}")
-        
-        return senhas_migradas
 
 # Instância global do gerenciador
 _servidor_manager = None

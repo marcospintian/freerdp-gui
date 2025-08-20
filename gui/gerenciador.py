@@ -1,5 +1,5 @@
 """
-Widget para gerenciamento de servidores
+Widget para gerenciamento de servidores com master password opcional
 """
 
 import logging
@@ -16,6 +16,7 @@ except ImportError as e:
 
 from core.servidores import get_servidor_manager
 from core.utils import validar_ip_porta
+from core.crypto import get_crypto_manager
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,9 @@ class GerenciadorServidoresWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         
-        # Gerenciador de servidores
+        # Gerenciadores
         self.servidor_manager = get_servidor_manager()
+        self.crypto_manager = get_crypto_manager()
         
         # Estado
         self.modo_edicao = False
@@ -71,9 +73,22 @@ class GerenciadorServidoresWidget(QWidget):
         self.input_usuario = QLineEdit()
         form_layout.addRow("Usuário:", self.input_usuario)
         
+        # Layout da senha com indicador
+        senha_layout = QHBoxLayout()
+        
         self.input_senha = QLineEdit()
         self.input_senha.setEchoMode(QLineEdit.EchoMode.Password)
-        form_layout.addRow("Senha:", self.input_senha)
+        senha_layout.addWidget(self.input_senha)
+        
+        # Indicador de senha criptografada salva
+        self.label_senha_salva = QLabel()
+        self.label_senha_salva.setStyleSheet("color: green; font-weight: bold;")
+        self.label_senha_salva.setVisible(False)
+        senha_layout.addWidget(self.label_senha_salva)
+        
+        senha_widget = QWidget()
+        senha_widget.setLayout(senha_layout)
+        form_layout.addRow("Senha:", senha_widget)
         
         parent_layout.addLayout(form_layout)
     
@@ -167,9 +182,14 @@ class GerenciadorServidoresWidget(QWidget):
                 self.input_ip.setText(ip)
                 self.input_usuario.setText(usuario)
                 
-                # Tentar carregar senha do keyring
-                senha = self._obter_senha_keyring(nome, usuario)
-                self.input_senha.setText(senha)
+                # Tentar carregar senha criptografada
+                senha = self._obter_senha_criptografada(nome)
+                if senha:
+                    self.input_senha.setText(senha)
+                    self._atualizar_indicador_senha_salva(True, senha.startswith("[SENHA TRANCADA"))
+                else:
+                    self.input_senha.clear()
+                    self._atualizar_indicador_senha_salva(False)
             else:
                 self._limpar_campos()
                 
@@ -177,15 +197,44 @@ class GerenciadorServidoresWidget(QWidget):
             logger.error(f"Erro ao carregar detalhes do servidor '{nome}': {str(e)}")
             self._limpar_campos()
     
-    def _obter_senha_keyring(self, nome: str, usuario: str) -> str:
-        """Obtém senha do keyring"""
+    def _obter_senha_criptografada(self, nome: str) -> Optional[str]:
+        """Obtém senha criptografada para o servidor"""
+        status = self.crypto_manager.get_status_info()
+        
+        # Se tem master password personalizada mas está trancada
+        if status['has_custom_password'] and not self.crypto_manager.is_unlocked():
+            if self.servidor_manager.servidor_tem_senha_salva(nome):
+                return "[SENHA TRANCADA - Configure master password]"
+            return None
+        
+        # Sistema sempre funciona (chave padrão ou personalizada destrancada)
         try:
-            import keyring
-            senha = keyring.get_password(nome, usuario)
-            return senha if senha else ""
+            senha = self.servidor_manager.obter_senha(nome)
+            if senha:
+                logger.debug(f"Senha criptografada obtida para: {nome}")
+                return senha
         except Exception as e:
-            logger.warning(f"Erro ao obter senha do keyring: {str(e)}")
-            return ""
+            logger.warning(f"Erro ao obter senha criptografada para {nome}: {str(e)}")
+        
+        return None
+    
+    def _atualizar_indicador_senha_salva(self, tem_senha_salva: bool, esta_trancada: bool = False):
+        """Atualiza indicador visual de senha salva"""
+        if tem_senha_salva:
+            if esta_trancada:
+                self.label_senha_salva.setText("🔒")
+                self.label_senha_salva.setToolTip("Senha salva mas trancada")
+            else:
+                status = self.crypto_manager.get_status_info()
+                if status['has_custom_password']:
+                    self.label_senha_salva.setText("🔐")
+                    self.label_senha_salva.setToolTip("Senha criptografada (Master Password personalizada)")
+                else:
+                    self.label_senha_salva.setText("🔑")
+                    self.label_senha_salva.setToolTip("Senha criptografada (chave padrão)")
+            self.label_senha_salva.setVisible(True)
+        else:
+            self.label_senha_salva.setVisible(False)
     
     def _limpar_campos(self):
         """Limpa todos os campos do formulário"""
@@ -193,6 +242,7 @@ class GerenciadorServidoresWidget(QWidget):
         self.input_ip.clear()
         self.input_usuario.clear()
         self.input_senha.clear()
+        self._atualizar_indicador_senha_salva(False)
     
     def _novo_servidor(self):
         """Inicia criação de novo servidor"""
@@ -214,6 +264,10 @@ class GerenciadorServidoresWidget(QWidget):
         
         self.nome_sendo_editado = item_atual.text()
         self._definir_modo_edicao()
+        
+        # Se senha está trancada, limpar campo para que usuário digite nova
+        if self.input_senha.text().startswith("[SENHA TRANCADA"):
+            self.input_senha.clear()
         
         self.input_nome.setFocus()
         logger.debug(f"Iniciada edição do servidor: {self.nome_sendo_editado}")
@@ -268,14 +322,22 @@ class GerenciadorServidoresWidget(QWidget):
             if resposta != QMessageBox.StandardButton.Yes:
                 return False
         
-        # Salvar servidor
+        # Salvar servidor básico
         if not self.servidor_manager.salvar_servidor(nome, ip, usuario):
             QMessageBox.critical(self, "Erro", "Erro ao salvar servidor no arquivo INI")
             return False
         
-        # Salvar senha se fornecida
-        if senha:
-            self._salvar_senha_keyring(nome, usuario, senha)
+        # Salvar senha criptografada se fornecida (sistema sempre pode salvar)
+        if senha and not senha.startswith("[SENHA TRANCADA"):
+            if not self.servidor_manager.salvar_senha(nome, senha):
+                status = self.crypto_manager.get_status_info()
+                if status['has_custom_password'] and not self.crypto_manager.is_unlocked():
+                    QMessageBox.warning(self, "Aviso", 
+                                      f"Servidor salvo, mas senha não foi salva.\n"
+                                      f"Desbloqueie as senhas para salvar a senha.")
+                else:
+                    QMessageBox.warning(self, "Aviso", 
+                                      f"Servidor salvo, mas erro ao salvar senha criptografada.")
         
         return True
     
@@ -291,46 +353,22 @@ class GerenciadorServidoresWidget(QWidget):
             if not self.servidor_manager.renomear_servidor(self.nome_sendo_editado, nome):
                 QMessageBox.critical(self, "Erro", "Erro ao renomear servidor")
                 return False
-            
-            # Migrar senha no keyring se necessário
-            self._migrar_senha_keyring(self.nome_sendo_editado, nome, usuario)
         
         # Atualizar dados do servidor
         if not self.servidor_manager.salvar_servidor(nome, ip, usuario):
             QMessageBox.critical(self, "Erro", "Erro ao salvar servidor")
             return False
         
-        # Atualizar senha se fornecida
-        if senha:
-            self._salvar_senha_keyring(nome, usuario, senha)
+        # Atualizar senha se fornecida e não está trancada
+        if senha and not senha.startswith("[SENHA TRANCADA"):
+            if not self.servidor_manager.salvar_senha(nome, senha):
+                status = self.crypto_manager.get_status_info()
+                if status['has_custom_password'] and not self.crypto_manager.is_unlocked():
+                    QMessageBox.warning(self, "Aviso", "Desbloqueie as senhas para atualizar a senha")
+                else:
+                    QMessageBox.warning(self, "Aviso", "Erro ao salvar senha criptografada")
         
         return True
-    
-    def _salvar_senha_keyring(self, nome: str, usuario: str, senha: str):
-        """Salva senha no keyring"""
-        try:
-            import keyring
-            keyring.set_password(nome, usuario, senha)
-            logger.info(f"Senha salva no keyring para: {nome}")
-        except Exception as e:
-            logger.warning(f"Erro ao salvar senha no keyring: {str(e)}")
-    
-    def _migrar_senha_keyring(self, nome_antigo: str, nome_novo: str, usuario: str):
-        """Migra senha entre nomes de servidor no keyring"""
-        try:
-            import keyring
-            
-            # Obter senha antiga
-            senha_antiga = keyring.get_password(nome_antigo, usuario)
-            if senha_antiga:
-                # Salvar com novo nome
-                keyring.set_password(nome_novo, usuario, senha_antiga)
-                # Remover senha antiga
-                keyring.delete_password(nome_antigo, usuario)
-                logger.info(f"Senha migrada de '{nome_antigo}' para '{nome_novo}'")
-                
-        except Exception as e:
-            logger.warning(f"Erro ao migrar senha no keyring: {str(e)}")
     
     def _finalizar_salvamento(self, nome: str, acao: str):
         """Finaliza processo de salvamento"""
@@ -350,7 +388,12 @@ class GerenciadorServidoresWidget(QWidget):
         self.servidores_atualizados.emit()
         
         # Mostrar sucesso
-        QMessageBox.information(self, "Sucesso", f"Servidor '{nome}' {acao} com sucesso!")
+        status = self.crypto_manager.get_status_info()
+        tipo_criptografia = "personalizada" if status['has_custom_password'] else "padrão"
+        
+        QMessageBox.information(self, "Sucesso", 
+                              f"✅ Servidor '{nome}' {acao} com sucesso!\n\n"
+                              f"🔐 Criptografia: {tipo_criptografia}")
         logger.info(f"Servidor '{nome}' {acao}")
     
     def _cancelar_edicao(self):
@@ -379,7 +422,11 @@ class GerenciadorServidoresWidget(QWidget):
         # Confirmar remoção
         resposta = QMessageBox.question(
             self, "Confirmar",
-            f"Tem certeza que deseja remover o servidor '{nome}'?",
+            f"❓ <b>Remover servidor '{nome}'?</b><br/><br/>"
+            f"Isso incluirá:<br/>"
+            f"• Dados do servidor<br/>"
+            f"• Senha criptografada (se existir)<br/><br/>"
+            f"Esta ação não pode ser desfeita.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
@@ -387,18 +434,10 @@ class GerenciadorServidoresWidget(QWidget):
             return
         
         try:
-            # Obter dados do servidor antes de remover
-            dados = self.servidor_manager.obter_servidor(nome)
-            
-            # Remover do arquivo INI
+            # Remover servidor (incluindo senha criptografada)
             if not self.servidor_manager.remover_servidor(nome):
                 QMessageBox.critical(self, "Erro", "Erro ao remover servidor do arquivo")
                 return
-            
-            # Remover senha do keyring
-            if dados:
-                _, usuario = dados
-                self._remover_senha_keyring(nome, usuario)
             
             # Atualizar interface
             self._recarregar_servidores()
@@ -407,21 +446,12 @@ class GerenciadorServidoresWidget(QWidget):
             # Notificar atualização
             self.servidores_atualizados.emit()
             
-            QMessageBox.information(self, "Sucesso", f"Servidor '{nome}' removido com sucesso!")
+            QMessageBox.information(self, "Sucesso", f"✅ Servidor '{nome}' removido com sucesso!")
             logger.info(f"Servidor '{nome}' removido")
             
         except Exception as e:
             logger.exception("Erro ao remover servidor")
             QMessageBox.critical(self, "Erro", f"Erro ao remover servidor: {str(e)}")
-    
-    def _remover_senha_keyring(self, nome: str, usuario: str):
-        """Remove senha do keyring"""
-        try:
-            import keyring
-            keyring.delete_password(nome, usuario)
-            logger.info(f"Senha removida do keyring para: {nome}")
-        except Exception as e:
-            logger.warning(f"Erro ao remover senha do keyring: {str(e)}")
     
     def refresh(self):
         """Atualiza dados do widget"""

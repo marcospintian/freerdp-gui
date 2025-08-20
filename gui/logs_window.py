@@ -192,15 +192,6 @@ class LogsWindow(QDialog):
             logger.exception("Erro ao salvar logs")
             QMessageBox.critical(self, "Erro", f"Erro ao salvar logs: {str(e)}")
     
-    def _toggle_auto_refresh(self):
-        """Alterna atualização automática"""
-        if self.update_timer.isActive():
-            self.update_timer.stop()
-            self.btn_auto_refresh.setText("Ativar Auto-Atualização")
-        else:
-            self.update_timer.start(2000)
-            self.btn_auto_refresh.setText("Desativar Auto-Atualização")
-    
     def closeEvent(self, event):
         """Evento de fechamento da janela"""
         # Parar timer de atualização
@@ -236,7 +227,9 @@ class LogViewer:
         logs_window.activateWindow()
         
         return logs_window
-
+    
+    @staticmethod
+    def clear_logs() -> bool:
         """
         Limpa arquivo de logs
         

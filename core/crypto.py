@@ -1,5 +1,6 @@
 """
 Módulo de criptografia para senhas do FreeRDP-GUI
+Com master password opcional - usa chave padrão quando não configurada
 """
 
 import os
@@ -15,7 +16,11 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 logger = logging.getLogger(__name__)
 
 class CryptoManager:
-    """Gerenciador de criptografia para senhas"""
+    """Gerenciador de criptografia para senhas com master password opcional"""
+    
+    # Senha padrão para quando usuário não configura master password
+    # Baseada em características do sistema para ser única por instalação
+    DEFAULT_PASSWORD_BASE = "FreeRDP-GUI-2024-Default-Key"
     
     def __init__(self, config_dir: Path = None):
         """
@@ -33,19 +38,74 @@ class CryptoManager:
         # Arquivo para armazenar salt da master password
         self.master_salt_file = self.config_dir / '.master_salt'
         
+        # Arquivo que indica se usuário configurou master password personalizada
+        self.has_custom_password_file = self.config_dir / '.has_custom_password'
+        
         # Cache da chave durante a sessão
         self._cached_key = None
-        self._session_timeout = None
+        self._is_using_default_key = False
+        
+        # Auto-inicializar com chave apropriada
+        self._auto_initialize()
         
         logger.debug(f"CryptoManager inicializado em: {self.config_dir}")
     
-    def _get_or_create_master_salt(self) -> bytes:
+    def _auto_initialize(self):
+        """Inicializa automaticamente com chave padrão ou personalizada"""
+        if self.has_custom_master_password():
+            # Usuário tem master password personalizada - precisa desbloquear manualmente
+            logger.info("Master password personalizada detectada - aguardando desbloqueio")
+        else:
+            # Usar chave padrão automaticamente
+            self._use_default_key()
+            logger.info("Usando chave padrão (master password não configurada)")
+    
+    def has_custom_master_password(self) -> bool:
+        """
+        Verifica se usuário configurou master password personalizada
+        
+        Returns:
+            True se tem master password personalizada
+        """
+        return self.has_custom_password_file.exists()
+    
+    def _use_default_key(self):
+        """Usa chave padrão baseada no sistema"""
+        try:
+            # Criar senha padrão única para este sistema/usuário
+            import platform
+            import getpass
+            
+            system_info = f"{platform.node()}-{getpass.getuser()}-{self.DEFAULT_PASSWORD_BASE}"
+            default_password = hashlib.sha256(system_info.encode()).hexdigest()[:32]
+            
+            # Derivar chave da senha padrão
+            self._cached_key = self._derive_key_from_password(default_password, use_default_salt=True)
+            self._is_using_default_key = True
+            
+            logger.debug("Chave padrão ativada")
+        except Exception as e:
+            logger.error(f"Erro ao usar chave padrão: {e}")
+            self._cached_key = None
+            self._is_using_default_key = False
+    
+    def _get_or_create_master_salt(self, use_default_salt: bool = False) -> bytes:
         """
         Obtém ou cria salt para a master password
+        
+        Args:
+            use_default_salt: Se True, usa salt fixo para chave padrão
         
         Returns:
             Salt de 32 bytes
         """
+        if use_default_salt:
+            # Salt fixo para chave padrão (baseado no sistema)
+            import platform
+            salt_base = f"{self.DEFAULT_PASSWORD_BASE}-{platform.system()}"
+            return hashlib.sha256(salt_base.encode()).digest()
+        
+        # Salt personalizado para master password do usuário
         if self.master_salt_file.exists():
             try:
                 with open(self.master_salt_file, 'rb') as f:
@@ -70,17 +130,18 @@ class CryptoManager:
         
         return salt
     
-    def _derive_key_from_password(self, password: str) -> bytes:
+    def _derive_key_from_password(self, password: str, use_default_salt: bool = False) -> bytes:
         """
-        Deriva chave criptográfica da master password
+        Deriva chave criptográfica da password
         
         Args:
-            password: Master password
+            password: Password para derivar a chave
+            use_default_salt: Se usar salt padrão ou personalizado
             
         Returns:
             Chave de 32 bytes para Fernet
         """
-        salt = self._get_or_create_master_salt()
+        salt = self._get_or_create_master_salt(use_default_salt)
         
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
@@ -94,35 +155,153 @@ class CryptoManager:
     
     def set_master_password(self, password: str) -> bool:
         """
-        Define a master password para a sessão
+        Define a master password personalizada para a sessão
         
         Args:
-            password: Master password
+            password: Master password personalizada
             
         Returns:
             True se senha foi aceita
         """
         try:
-            key = self._derive_key_from_password(password)
+            key = self._derive_key_from_password(password, use_default_salt=False)
             
-            # Testar se a chave funciona com dados existentes
-            if self._validate_master_password(key):
-                self._cached_key = key
-                logger.info("Master password definida para a sessão")
-                return True
-            else:
-                # Se não há dados criptografados ainda, aceitar qualquer senha
-                # (primeira execução)
-                if not self._has_encrypted_data():
-                    self._cached_key = key
-                    logger.info("Master password definida (primeira execução)")
-                    return True
-                else:
+            # Se já existem dados criptografados, validar senha
+            if self.has_custom_master_password():
+                if not self._validate_master_password(key):
                     logger.warning("Master password incorreta")
                     return False
+            
+            # Marcar que agora tem password personalizada
+            try:
+                self.has_custom_password_file.touch()
+                os.chmod(self.has_custom_password_file, 0o600)
+            except Exception as e:
+                logger.warning(f"Erro ao criar arquivo de marcação: {e}")
+            
+            # Se estava usando chave padrão e tem dados, migrar
+            if self._is_using_default_key and self._has_encrypted_data():
+                if not self._migrate_from_default_to_custom(key):
+                    logger.error("Erro ao migrar dados da chave padrão para personalizada")
+                    return False
+            
+            self._cached_key = key
+            self._is_using_default_key = False
+            logger.info("Master password personalizada definida")
+            return True
                     
         except Exception as e:
             logger.error(f"Erro ao definir master password: {e}")
+            return False
+    
+    def _migrate_from_default_to_custom(self, new_custom_key: bytes) -> bool:
+        """
+        Migra dados criptografados da chave padrão para chave personalizada
+        
+        Args:
+            new_custom_key: Nova chave personalizada
+            
+        Returns:
+            True se migração foi bem sucedida
+        """
+        try:
+            # Salvar chave padrão atual
+            old_default_key = self._cached_key
+            
+            # Obter todos os dados criptografados
+            from .servidores import get_servidor_manager
+            servidor_manager = get_servidor_manager()
+            servidor_manager.config.read(servidor_manager.ini_path, encoding='utf-8')
+            
+            # Descriptografar com chave padrão e re-criptografar com chave personalizada
+            migrated_count = 0
+            
+            for section_name in servidor_manager.config.sections():
+                if servidor_manager.config.has_option(section_name, 'senha_encrypted'):
+                    encrypted_data = servidor_manager.config[section_name]['senha_encrypted']
+                    
+                    try:
+                        # Descriptografar com chave padrão
+                        plain_password = self._decrypt_data(encrypted_data, old_default_key, section_name)
+                        
+                        # Re-criptografar com chave personalizada
+                        self._cached_key = new_custom_key  # Temporariamente
+                        new_encrypted = self.encrypt_password(plain_password, section_name)
+                        
+                        if new_encrypted:
+                            servidor_manager.config[section_name]['senha_encrypted'] = new_encrypted
+                            migrated_count += 1
+                        
+                    except Exception as e:
+                        logger.warning(f"Erro ao migrar senha de {section_name}: {e}")
+                        continue
+            
+            # Salvar configuração migrada
+            if migrated_count > 0:
+                servidor_manager._salvar_config()
+                logger.info(f"Migração concluída: {migrated_count} senhas migradas para chave personalizada")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erro durante migração: {e}")
+            return False
+    
+    def remove_master_password(self) -> bool:
+        """
+        Remove master password personalizada e volta para chave padrão
+        
+        Returns:
+            True se operação foi bem sucedida
+        """
+        if not self.has_custom_master_password():
+            logger.info("Master password personalizada não estava configurada")
+            return True
+        
+        try:
+            # Obter dados criptografados atuais
+            encrypted_data = {}
+            
+            from .servidores import get_servidor_manager
+            servidor_manager = get_servidor_manager()
+            servidor_manager.config.read(servidor_manager.ini_path, encoding='utf-8')
+            
+            # Descriptografar todos com chave atual
+            for section_name in servidor_manager.config.sections():
+                if servidor_manager.config.has_option(section_name, 'senha_encrypted'):
+                    encrypted = servidor_manager.config[section_name]['senha_encrypted']
+                    try:
+                        plain = self._decrypt_data(encrypted, self._cached_key, section_name)
+                        encrypted_data[section_name] = plain
+                    except Exception as e:
+                        logger.warning(f"Erro ao descriptografar {section_name} durante remoção: {e}")
+            
+            # Remover arquivos de configuração personalizada
+            try:
+                if self.master_salt_file.exists():
+                    self.master_salt_file.unlink()
+                if self.has_custom_password_file.exists():
+                    self.has_custom_password_file.unlink()
+            except Exception as e:
+                logger.warning(f"Erro ao remover arquivos de configuração: {e}")
+            
+            # Voltar para chave padrão
+            self._use_default_key()
+            
+            # Re-criptografar dados com chave padrão
+            for section_name, plain_password in encrypted_data.items():
+                new_encrypted = self.encrypt_password(plain_password, section_name)
+                if new_encrypted:
+                    servidor_manager.config[section_name]['senha_encrypted'] = new_encrypted
+            
+            # Salvar
+            servidor_manager._salvar_config()
+            
+            logger.info("Master password personalizada removida, voltando para chave padrão")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erro ao remover master password: {e}")
             return False
     
     def _validate_master_password(self, key: bytes) -> bool:
@@ -136,11 +315,9 @@ class CryptoManager:
             True se senha está correta
         """
         try:
-            # Procurar por dados criptografados no INI para validar
             from .servidores import get_servidor_manager
             servidor_manager = get_servidor_manager()
             
-            # Carregar configuração
             servidor_manager.config.read(servidor_manager.ini_path, encoding='utf-8')
             
             # Procurar primeira senha criptografada para testar
@@ -148,18 +325,17 @@ class CryptoManager:
                 if servidor_manager.config.has_option(section_name, 'senha_encrypted'):
                     encrypted_data = servidor_manager.config[section_name]['senha_encrypted']
                     try:
-                        # Tentar descriptografar
                         self._decrypt_data(encrypted_data, key)
                         return True
                     except:
                         return False
             
-            # Se não há dados criptografados, não pode validar
+            # Se não há dados criptografados, assumir válida
             return True
             
         except Exception as e:
             logger.debug(f"Erro na validação da master password: {e}")
-            return True  # Assumir válida se não pode verificar
+            return True
     
     def _has_encrypted_data(self) -> bool:
         """
@@ -184,17 +360,33 @@ class CryptoManager:
     
     def is_unlocked(self) -> bool:
         """
-        Verifica se o crypto está desbloqueado (master password definida)
+        Verifica se o crypto está desbloqueado
         
         Returns:
-            True se está desbloqueado
+            True se está desbloqueado (sempre True neste sistema)
         """
         return self._cached_key is not None
     
+    def is_using_default_key(self) -> bool:
+        """
+        Verifica se está usando chave padrão
+        
+        Returns:
+            True se usando chave padrão
+        """
+        return self._is_using_default_key
+    
     def lock(self):
-        """Remove chave da memória (trava o crypto)"""
-        self._cached_key = None
-        logger.info("CryptoManager travado")
+        """Trava apenas se estiver usando master password personalizada"""
+        if not self._is_using_default_key:
+            self._cached_key = None
+            logger.info("CryptoManager travado (master password personalizada)")
+        else:
+            logger.info("Não é possível travar - usando chave padrão")
+    
+    def unlock_with_default_key(self):
+        """Força uso da chave padrão (para recuperação)"""
+        self._use_default_key()
     
     def encrypt_password(self, password: str, server_name: str) -> Optional[str]:
         """
@@ -215,11 +407,12 @@ class CryptoManager:
             # Criar salt único para esta senha
             salt = os.urandom(16)
             
-            # Criar dados para criptografar (senha + contexto)
+            # Criar dados para criptografar (senha + contexto + tipo de chave)
             data_to_encrypt = {
                 'password': password,
                 'server': server_name,
-                'version': 1
+                'version': 1,
+                'key_type': 'default' if self._is_using_default_key else 'custom'
             }
             
             import json
@@ -311,6 +504,11 @@ class CryptoManager:
             True se alteração foi bem sucedida
         """
         try:
+            # Se não tem master password personalizada, old_password será ignorada
+            if not self.has_custom_master_password():
+                logger.info("Definindo primeira master password personalizada")
+                return self.set_master_password(new_password)
+            
             # Validar senha atual
             old_key = self._derive_key_from_password(old_password)
             if not self._validate_master_password(old_key):
@@ -339,7 +537,8 @@ class CryptoManager:
             new_key = self._derive_key_from_password(new_password)
             
             # Re-criptografar todas as senhas com nova chave
-            self._cached_key = new_key  # Temporariamente usar nova chave
+            self._cached_key = new_key
+            self._is_using_default_key = False
             
             for section_name, password in encrypted_passwords.items():
                 new_encrypted = self.encrypt_password(password, section_name)
@@ -352,13 +551,9 @@ class CryptoManager:
             # Salvar configuração
             servidor_manager._salvar_config()
             
-            # Remover salt antigo e criar novo (força derivação de nova chave)
+            # Remover salt antigo e criar novo
             if self.master_salt_file.exists():
                 self.master_salt_file.unlink()
-            
-            # Gerar novo salt e re-derivar chave
-            self._cached_key = None
-            self.set_master_password(new_password)
             
             logger.info("Master password alterada com sucesso")
             return True
@@ -366,6 +561,21 @@ class CryptoManager:
         except Exception as e:
             logger.exception("Erro ao alterar master password")
             return False
+    
+    def get_status_info(self) -> dict:
+        """
+        Obtém informações de status do sistema de criptografia
+        
+        Returns:
+            Dicionário com informações de status
+        """
+        return {
+            'is_unlocked': self.is_unlocked(),
+            'has_custom_password': self.has_custom_master_password(),
+            'is_using_default_key': self.is_using_default_key(),
+            'has_encrypted_data': self._has_encrypted_data(),
+            'config_dir': str(self.config_dir)
+        }
     
     def export_encrypted_passwords(self) -> dict:
         """
