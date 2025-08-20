@@ -107,36 +107,12 @@ class GerenciadorServidoresWidget(QWidget):
         """Configura interface para modo somente leitura"""
         # Desabilitar campos
         self.input_nome.setEnabled(False)
-        self.input_ip.setEnabled(False)
-        self.input_usuario.setEnabled(False)
         self.input_senha.setEnabled(False)
         
         # Configurar botões
-        self.btn_salvar.setEnabled(False)
-        self.btn_cancelar.setEnabled(False)
-        self.btn_novo.setEnabled(True)
-        self.btn_editar.setEnabled(True)
-        self.btn_remover.setEnabled(True)
-        
-        self.modo_edicao = False
-    
     def _definir_modo_edicao(self):
-        """Configura interface para modo de edição"""
-        # Habilitar campos
-        self.input_nome.setEnabled(True)
-        self.input_ip.setEnabled(True)
         self.input_usuario.setEnabled(True)
-        self.input_senha.setEnabled(True)
         
-        # Configurar botões
-        self.btn_salvar.setEnabled(True)
-        self.btn_cancelar.setEnabled(True)
-        self.btn_novo.setEnabled(False)
-        self.btn_editar.setEnabled(False)
-        self.btn_remover.setEnabled(False)
-        
-        self.modo_edicao = True
-    
     def _recarregar_servidores(self):
         """Recarrega lista de servidores"""
         try:
@@ -177,15 +153,18 @@ class GerenciadorServidoresWidget(QWidget):
             logger.error(f"Erro ao carregar detalhes do servidor '{nome}': {str(e)}")
             self._limpar_campos()
     
-    def _obter_senha_keyring(self, nome: str, usuario: str) -> str:
-        """Obtém senha do keyring"""
+
+    def _obter_senha_criptografada(self, nome: str) -> str:
+        """Obtém senha criptografada do servidores.ini"""
+        from core.utils_crypto import decrypt_password
         try:
-            import keyring
-            senha = keyring.get_password(nome, usuario)
-            return senha if senha else ""
+            sec = self.servidor_manager.config[nome]
+            senha_cripto = sec.get('senha', None)
+            if senha_cripto:
+                return decrypt_password(senha_cripto)
         except Exception as e:
-            logger.warning(f"Erro ao obter senha do keyring: {str(e)}")
-            return ""
+            logger.warning(f"Erro ao obter senha criptografada: {str(e)}")
+        return ""
     
     def _limpar_campos(self):
         """Limpa todos os campos do formulário"""
@@ -275,7 +254,7 @@ class GerenciadorServidoresWidget(QWidget):
         
         # Salvar senha se fornecida
         if senha:
-            self._salvar_senha_keyring(nome, usuario, senha)
+            self._salvar_senha_criptografada(nome, senha)
         
         return True
     
@@ -302,35 +281,10 @@ class GerenciadorServidoresWidget(QWidget):
         
         # Atualizar senha se fornecida
         if senha:
-                self._salvar_senha_criptografada(nome, senha)
+            self._salvar_senha_criptografada(nome, senha)
         
         return True
     
-    def _salvar_senha_keyring(self, nome: str, usuario: str, senha: str):
-        """Salva senha no keyring"""
-        try:
-            import keyring
-            keyring.set_password(nome, usuario, senha)
-            logger.info(f"Senha salva no keyring para: {nome}")
-        except Exception as e:
-            logger.warning(f"Erro ao salvar senha no keyring: {str(e)}")
-    
-    def _migrar_senha_keyring(self, nome_antigo: str, nome_novo: str, usuario: str):
-        """Migra senha entre nomes de servidor no keyring"""
-        try:
-            import keyring
-            
-            # Obter senha antiga
-            senha_antiga = keyring.get_password(nome_antigo, usuario)
-            if senha_antiga:
-                # Salvar com novo nome
-                keyring.set_password(nome_novo, usuario, senha_antiga)
-                # Remover senha antiga
-                keyring.delete_password(nome_antigo, usuario)
-                logger.info(f"Senha migrada de '{nome_antigo}' para '{nome_novo}'")
-                
-        except Exception as e:
-            logger.warning(f"Erro ao migrar senha no keyring: {str(e)}")
     
     def _finalizar_salvamento(self, nome: str, acao: str):
         """Finaliza processo de salvamento"""
@@ -395,9 +349,9 @@ class GerenciadorServidoresWidget(QWidget):
                 QMessageBox.critical(self, "Erro", "Erro ao remover servidor do arquivo")
                 return
             
-            # Remover senha do keyring
-                if dados:
-                    self._remover_senha_criptografada(nome)
+            # Remover senha criptografada
+            if dados:
+                self._remover_senha_criptografada(nome)
             
             # Atualizar interface
             self._recarregar_servidores()
@@ -413,14 +367,16 @@ class GerenciadorServidoresWidget(QWidget):
             logger.exception("Erro ao remover servidor")
             QMessageBox.critical(self, "Erro", f"Erro ao remover servidor: {str(e)}")
     
-    def _remover_senha_keyring(self, nome: str, usuario: str):
-        """Remove senha do keyring"""
+
+    def _remover_senha_criptografada(self, nome: str):
+        """Remove senha criptografada do servidores.ini"""
         try:
-            import keyring
-            keyring.delete_password(nome, usuario)
-            logger.info(f"Senha removida do keyring para: {nome}")
+            if 'senha' in self.servidor_manager.config[nome]:
+                del self.servidor_manager.config[nome]['senha']
+                self.servidor_manager.salvar()
+                logger.info(f"Senha removida do arquivo para: {nome}")
         except Exception as e:
-            logger.warning(f"Erro ao remover senha do keyring: {str(e)}")
+            logger.warning(f"Erro ao remover senha criptografada: {str(e)}")
     
     def refresh(self):
         """Atualiza dados do widget"""
