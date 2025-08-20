@@ -6,8 +6,6 @@ Interface gráfica moderna e intuitiva para conexões RDP usando FreeRDP. Agora 
 
 - 🔐 **Sistema próprio de criptografia** - Senhas seguras sem depender do keyring
 - 🏷️ **Novo nome**: FreeRDP-GUI (mais descritivo)
-- 📦 **Preparado para distribuição** moderna (Flatpak/AppImage/DEB/RPM)
-- 🔄 **Migração automática** do keyring para criptografia local
 - 🛡️ **Master password** para proteger todas as senhas
 - 💾 **Portabilidade total** - um arquivo INI com tudo
 
@@ -163,19 +161,6 @@ tail -f ~/.config/freerdp-gui.log
 3. Teste com diferentes distribuições
 4. Envie um PR
 
-## 📦 Distribuição
-
-O projeto está preparado para distribuição moderna:
-
-- **Flatpak**: Sandbox seguro
-- **AppImage**: Portabilidade máxima  
-- **DEB/RPM**: Instalação tradicional
-
-### Building
-```bash
-# Em breve - scripts de build automático
-./packaging/build_all.sh
-```
 
 ## 🔧 Troubleshooting
 
@@ -203,7 +188,7 @@ sudo pacman -S freerdp
 
 ## 📋 Changelog
 
-### v2.0.0 (Nova Major Version)
+### v2.0.1 (Nova Major Version)
 - 🔐 Sistema próprio de criptografia de senhas
 - 🏷️ Rename para FreeRDP-GUI
 - 📦 Preparação para distribuição moderna
