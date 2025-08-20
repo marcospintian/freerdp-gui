@@ -1,5 +1,5 @@
 """
-Janela principal da aplicação RDP Connector
+Janela principal da aplicação FreeRDP-GUI
 """
 
 import logging
@@ -20,30 +20,33 @@ from core.servidores import get_servidor_manager
 from core.settings import get_settings_manager, get_configuracoes_app
 from core.rdp import RDPThread, criar_opcoes_padrao
 from core.utils import SOM_MAP, RESOLUCAO_MAP, QUALIDADE_MAP, notificar_desktop, verificar_comando_disponivel
+from core.crypto import get_crypto_manager
 
 from .gerenciador import GerenciadorServidoresWidget
 from .logs_window import LogsWindow
 from .system_tray import SystemTrayManager
+from .master_password_dialog import solicitar_master_password, alterar_master_password
 
 logger = logging.getLogger(__name__)
 
-class RDPConnectorWindow(QMainWindow):
+class FreeRDPGUIWindow(QMainWindow):
     """Janela principal da aplicação"""
     
-    # SINAL ADICIONADO - Indica quando a aplicação deve realmente sair
+    # Sinal que indica quando a aplicação deve realmente sair
     aplicacao_deve_sair = Signal()
     
     def __init__(self):
         super().__init__()
         self._fechar_de_verdade = False
         
-        # CONTADOR DE CONEXÕES ATIVAS ADICIONADO
+        # Contador de conexões ativas
         self.conexoes_ativas = 0
 
         # Managers
         self.servidor_manager = get_servidor_manager()
         self.settings_manager = get_settings_manager()
         self.config_app = get_configuracoes_app()
+        self.crypto_manager = get_crypto_manager()
         
         # Estado
         self.rdp_threads: Dict[str, RDPThread] = {}
@@ -52,15 +55,57 @@ class RDPConnectorWindow(QMainWindow):
         # Dados
         self.servidores = {}
         
+        # Verificar se precisa configurar master password
+        self._verificar_master_password()
+        
         # Inicialização
         self._init_ui()
         self._init_system_tray()
         self._carregar_servidores()
         self._restaurar_configuracoes()
         
+        # Migrar senhas do keyring se necessário
+        self._migrar_keyring_se_necessario()
+        
         logger.info("Janela principal inicializada")
     
-    # MÉTODOS ADICIONADOS PARA CONTROLE DE CONEXÕES
+    def _verificar_master_password(self):
+        """Verifica se precisa configurar master password"""
+        # Verificar se existem senhas criptografadas
+        servidores_com_senha = self.servidor_manager.listar_servidores_com_senha()
+        
+        if servidores_com_senha and not self.crypto_manager.is_unlocked():
+            # Tentar solicitar master password
+            senha = solicitar_master_password(self, is_first_time=False)
+            if not senha:
+                # Se cancelou, mostrar aviso
+                QMessageBox.warning(
+                    self, "Aviso", 
+                    f"Existem {len(servidores_com_senha)} senhas criptografadas salvas.\n"
+                    "Você pode configurar a master password mais tarde no menu Senhas."
+                )
+        elif not servidores_com_senha:
+            # Primeira execução ou sem senhas salvas
+            logger.info("Primeira execução ou sem senhas salvas")
+    
+    def _migrar_keyring_se_necessario(self):
+        """Migra senhas do keyring se necessário e se crypto estiver desbloqueado"""
+        if not self.crypto_manager.is_unlocked():
+            return
+        
+        try:
+            migradas = self.servidor_manager.migrar_keyring_para_crypto()
+            if migradas > 0:
+                QMessageBox.information(
+                    self, "Migração", 
+                    f"{migradas} senhas foram migradas do keyring para o novo sistema de criptografia."
+                )
+                # Recarregar servidores para refletir mudanças
+                self._carregar_servidores()
+        except Exception as e:
+            logger.error(f"Erro durante migração do keyring: {e}")
+    
+    # Métodos para controle de conexões (mantidos do código anterior)
     def incrementar_conexoes(self):
         """Incrementa contador de conexões ativas"""
         self.conexoes_ativas += 1
@@ -71,17 +116,14 @@ class RDPConnectorWindow(QMainWindow):
         self.conexoes_ativas = max(0, self.conexoes_ativas - 1)
         logger.info(f"Conexões ativas: {self.conexoes_ativas}")
         
-        # Verificar se deve sair após desconexão
         if self.conexoes_ativas == 0:
             self.verificar_saida_completa()
     
     def verificar_saida_completa(self):
         """Verifica se a aplicação deve sair completamente"""
-        # Se não há conexões ativas e a janela está oculta
         if self.conexoes_ativas == 0 and not self.isVisible():
             logger.info("Sem conexões ativas e janela oculta - considerando saída")
-            # Aguardar um pouco antes de decidir sair (dar tempo para nova conexão)
-            QTimer.singleShot(5000, self.considerar_saida)  # 5 segundos
+            QTimer.singleShot(5000, self.considerar_saida)
     
     def considerar_saida(self):
         """Considera sair se ainda não há atividade"""
@@ -93,20 +135,13 @@ class RDPConnectorWindow(QMainWindow):
         """Método para sair completamente da aplicação"""
         logger.info("Saindo da aplicação completamente")
         
-        # Esconder system tray primeiro
         if hasattr(self, 'system_tray'):
             self.system_tray.hide()
         
-        # Fechar todas as conexões RDP ativas
         self.encerrar_todas_conexoes()
-        
-        # Salvar configurações
         self._salvar_configuracoes()
         
-        # Marcar para fechar de verdade
         self._fechar_de_verdade = True
-        
-        # Emitir sinal de saída
         self.aplicacao_deve_sair.emit()
     
     def encerrar_todas_conexoes(self):
@@ -138,7 +173,6 @@ class RDPConnectorWindow(QMainWindow):
             if thread:
                 thread.deleteLater()
 
-            # Remover do dicionário independentemente do sucesso da finalização
             if thread_id in self.rdp_threads:
                 del self.rdp_threads[thread_id]
 
@@ -147,8 +181,8 @@ class RDPConnectorWindow(QMainWindow):
 
     def _init_ui(self):
         """Inicializa interface do usuário"""
-        self.setWindowTitle("RDP Connector Pro")
-        self.setFixedSize(500, 600)
+        self.setWindowTitle("FreeRDP-GUI")
+        self.setFixedSize(500, 650)  # Aumentei um pouco para acomodar novos botões
         
         # Widget central
         central_widget = QWidget()
@@ -170,6 +204,115 @@ class RDPConnectorWindow(QMainWindow):
         
         # Botões principais
         self._init_botoes_principais(layout)
+        
+        # Menu de senhas
+        self._init_menu_senhas()
+    
+    def _init_menu_senhas(self):
+        """Inicializa menu para gerenciamento de senhas"""
+        menubar = self.menuBar()
+        
+        # Menu Senhas
+        senha_menu = menubar.addMenu("&Senhas")
+        
+        # Configurar Master Password
+        config_action = QAction("&Configurar Master Password...", self)
+        config_action.triggered.connect(self._configurar_master_password)
+        senha_menu.addAction(config_action)
+        
+        # Alterar Master Password
+        change_action = QAction("&Alterar Master Password...", self)
+        change_action.triggered.connect(self._alterar_master_password)
+        senha_menu.addAction(change_action)
+        
+        senha_menu.addSeparator()
+        
+        # Trancar/Destrancar
+        self.lock_action = QAction("&Trancar Senhas", self)
+        self.lock_action.triggered.connect(self._toggle_crypto_lock)
+        senha_menu.addAction(self.lock_action)
+        
+        senha_menu.addSeparator()
+        
+        # Status das senhas
+        status_action = QAction("&Status das Senhas...", self)
+        status_action.triggered.connect(self._mostrar_status_senhas)
+        senha_menu.addAction(status_action)
+        
+        # Atualizar estado inicial
+        self._atualizar_menu_senhas()
+    
+    def _atualizar_menu_senhas(self):
+        """Atualiza estado do menu de senhas"""
+        if self.crypto_manager.is_unlocked():
+            self.lock_action.setText("&Trancar Senhas")
+        else:
+            self.lock_action.setText("&Destrancar Senhas")
+    
+    def _configurar_master_password(self):
+        """Configura master password pela primeira vez"""
+        if self.crypto_manager.is_unlocked():
+            resposta = QMessageBox.question(
+                self, "Master Password", 
+                "Master password já está configurada.\n\nDeseja alterá-la?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if resposta == QMessageBox.StandardButton.Yes:
+                self._alterar_master_password()
+            return
+        
+        # Primeira configuração
+        senha = solicitar_master_password(self, is_first_time=True)
+        if senha:
+            QMessageBox.information(
+                self, "Sucesso", 
+                "Master password configurada com sucesso!\n\n"
+                "Agora suas senhas RDP serão criptografadas automaticamente."
+            )
+            self._atualizar_menu_senhas()
+    
+    def _alterar_master_password(self):
+        """Altera master password existente"""
+        if not self.crypto_manager.is_unlocked():
+            QMessageBox.information(
+                self, "Aviso", 
+                "Primeiro desbloqueie as senhas para alterar a master password."
+            )
+            return
+        
+        if alterar_master_password(self):
+            self._atualizar_menu_senhas()
+    
+    def _toggle_crypto_lock(self):
+        """Alterna trava do crypto"""
+        if self.crypto_manager.is_unlocked():
+            # Trancar
+            self.crypto_manager.lock()
+            self._notificar("FreeRDP-GUI", "Senhas trancadas")
+        else:
+            # Destrancar
+            senha = solicitar_master_password(self)
+            if senha:
+                self._notificar("FreeRDP-GUI", "Senhas destrancadas")
+        
+        self._atualizar_menu_senhas()
+    
+    def _mostrar_status_senhas(self):
+        """Mostra status das senhas salvas"""
+        servidores_com_senha = self.servidor_manager.listar_servidores_com_senha()
+        
+        if not servidores_com_senha:
+            QMessageBox.information(
+                self, "Status das Senhas", 
+                "Nenhuma senha está salva atualmente."
+            )
+            return
+        
+        status = f"Senhas salvas para {len(servidores_com_senha)} servidor(es):\n\n"
+        status += "\n".join([f"• {servidor}" for servidor in sorted(servidores_com_senha)])
+        status += f"\n\nStatus: {'🔓 Destrancado' if self.crypto_manager.is_unlocked() else '🔒 Trancado'}"
+        
+        QMessageBox.information(self, "Status das Senhas", status)
     
     def _init_aba_conexao(self):
         """Inicializa aba de conexão"""
@@ -202,17 +345,18 @@ class RDPConnectorWindow(QMainWindow):
         self.edit_usuario = QLineEdit()
         cred_layout.addRow("Usuário:", self.edit_usuario)
         
-        # Layout da senha com botão gerenciar
+        # Layout da senha com indicador de senha salva
         senha_layout = QHBoxLayout()
         
         self.edit_senha = QLineEdit()
         self.edit_senha.setEchoMode(QLineEdit.EchoMode.Password)
         senha_layout.addWidget(self.edit_senha)
         
-        self.btn_gerenciar_senha = QPushButton("Gerenciar")
-        self.btn_gerenciar_senha.setMaximumWidth(80)
-        self.btn_gerenciar_senha.clicked.connect(self._gerenciar_senha)
-        senha_layout.addWidget(self.btn_gerenciar_senha)
+        # Indicador de senha salva
+        self.label_senha_salva = QLabel()
+        self.label_senha_salva.setStyleSheet("color: green; font-weight: bold;")
+        self.label_senha_salva.setVisible(False)
+        senha_layout.addWidget(self.label_senha_salva)
         
         senha_widget = QWidget()
         senha_widget.setLayout(senha_layout)
@@ -236,6 +380,7 @@ class RDPConnectorWindow(QMainWindow):
         layout.addWidget(self.check_home)
         
         self.check_salvar_senha = QCheckBox("Salvar senha automaticamente")
+        self.check_salvar_senha.setToolTip("Salva senha criptografada no arquivo de configuração")
         layout.addWidget(self.check_salvar_senha)
         
         # Som
@@ -266,7 +411,7 @@ class RDPConnectorWindow(QMainWindow):
         # Qualidade
         self.combo_qualidade = QComboBox()
         self.combo_qualidade.addItems(list(QUALIDADE_MAP.keys()))
-        self.combo_qualidade.setCurrentText("Broadband")  # Padrão
+        self.combo_qualidade.setCurrentText("Broadband")
         display_layout.addRow("Qualidade:", self.combo_qualidade)
         
         parent_layout.addLayout(display_layout)
@@ -291,7 +436,7 @@ class RDPConnectorWindow(QMainWindow):
         self.btn_conectar.setDefault(True)
         button_layout.addWidget(self.btn_conectar)
         
-        btn_cancelar = QPushButton("Cancelar")
+        btn_cancelar = QPushButton("Fechar")
         btn_cancelar.clicked.connect(self.close)
         button_layout.addWidget(btn_cancelar)
         
@@ -329,38 +474,49 @@ class RDPConnectorWindow(QMainWindow):
             self.edit_ip_manual.setVisible(True)
             self.edit_usuario.setText("usuario")
             self.edit_senha.setText("")
-            self.btn_gerenciar_senha.setEnabled(False)
+            self._atualizar_indicador_senha_salva(False)
         else:
             self.edit_ip_manual.setVisible(False)
-            self.btn_gerenciar_senha.setEnabled(True)
             
             if servidor_nome in self.servidores:
                 _, usuario_padrao = self.servidores[servidor_nome]
                 self.edit_usuario.setText(usuario_padrao)
                 
-                # Tentar carregar senha do keyring
-                senha = self._obter_senha_keyring(servidor_nome)
-                self.edit_senha.setText(senha)
+                # Tentar carregar senha criptografada
+                senha_salva = self._obter_senha_criptografada(servidor_nome)
+                if senha_salva:
+                    self.edit_senha.setText(senha_salva)
+                    self._atualizar_indicador_senha_salva(True)
+                else:
+                    self.edit_senha.setText("")
+                    self._atualizar_indicador_senha_salva(False)
     
-    def _obter_senha_keyring(self, nome_servidor: str) -> str:
-        """Obtém senha do keyring para o servidor"""
-        try:
-            import keyring
-            
-            if nome_servidor not in self.servidores:
-                return ""
-            
-            _, usuario = self.servidores[nome_servidor]
-            senha = keyring.get_password(nome_servidor, usuario)
-            
-            if senha:
-                logger.info(f"Senha obtida do keyring para: {nome_servidor}")
-                return senha
-            
-        except Exception as e:
-            logger.warning(f"Erro ao obter senha do keyring para {nome_servidor}: {str(e)}")
+    def _atualizar_indicador_senha_salva(self, tem_senha_salva: bool):
+        """Atualiza indicador visual de senha salva"""
+        if tem_senha_salva:
+            self.label_senha_salva.setText("💾")
+            self.label_senha_salva.setToolTip("Senha salva (criptografada)")
+            self.label_senha_salva.setVisible(True)
+        else:
+            self.label_senha_salva.setVisible(False)
+    
+    def _obter_senha_criptografada(self, nome_servidor: str) -> Optional[str]:
+        """Obtém senha criptografada para o servidor"""
+        if not self.crypto_manager.is_unlocked():
+            # Se crypto está trancado, verificar se tem senha salva
+            if self.servidor_manager.servidor_tem_senha_salva(nome_servidor):
+                return "[SENHA TRANCADA - Clique em Senhas > Destrancar]"
+            return None
         
-        return ""
+        try:
+            senha = self.servidor_manager.obter_senha(nome_servidor)
+            if senha:
+                logger.info(f"Senha criptografada obtida para: {nome_servidor}")
+                return senha
+        except Exception as e:
+            logger.warning(f"Erro ao obter senha criptografada para {nome_servidor}: {str(e)}")
+        
+        return None
     
     def _salvar_senha_automatica(self, servidor_nome: str, senha: str):
         """Salva senha automaticamente se habilitado"""
@@ -370,34 +526,17 @@ class RDPConnectorWindow(QMainWindow):
         if servidor_nome == "Manual" or servidor_nome not in self.servidores:
             return
         
-        try:
-            import keyring
-            
-            # Verificar se senha já existe
-            senha_atual = self._obter_senha_keyring(servidor_nome)
-            if senha_atual == senha:
-                return
-            
-            _, usuario = self.servidores[servidor_nome]
-            keyring.set_password(servidor_nome, usuario, senha)
-            
-            logger.info(f"Senha salva automaticamente para: {servidor_nome}")
-            self._notificar("RDP Connector", f"Senha salva automaticamente para {servidor_nome}")
-                
-        except Exception as e:
-            logger.exception("Erro ao salvar senha automaticamente")
-    
-    def _gerenciar_senha(self):
-        """Abre dialog para gerenciar senhas"""
-        servidor = self.combo_servidor.currentText()
-        if servidor == "Manual":
-            QMessageBox.information(self, "Info", 
-                                  "Gerenciamento de senha não disponível para conexões manuais")
+        if not self.crypto_manager.is_unlocked():
+            logger.warning("Não é possível salvar senha - crypto não desbloqueado")
             return
         
-        dialog = PasswordManagerDialog(self, servidor)
-        if dialog.exec() == dialog.DialogCode.Accepted:
-            self._on_servidor_changed(servidor)
+        try:
+            if self.servidor_manager.salvar_senha(servidor_nome, senha):
+                logger.info(f"Senha salva automaticamente para: {servidor_nome}")
+                self._notificar("FreeRDP-GUI", f"Senha salva automaticamente para {servidor_nome}")
+                self._atualizar_indicador_senha_salva(True)
+        except Exception as e:
+            logger.exception("Erro ao salvar senha automaticamente")
     
     def _obter_opcoes_conexao(self) -> Dict:
         """Obtém opções de conexão da interface"""
@@ -434,6 +573,10 @@ class RDPConnectorWindow(QMainWindow):
         senha = self.edit_senha.text()
         if not senha:
             return False, "Digite a senha"
+        
+        # Verificar se senha está trancada
+        if senha.startswith("[SENHA TRANCADA"):
+            return False, "Desbloqueie as senhas primeiro (Menu Senhas > Destrancar)"
         
         return True, ""
     
@@ -481,18 +624,17 @@ class RDPConnectorWindow(QMainWindow):
         
         host, usuario_padrao = self.servidores[servidor]
         
-        # Tentar obter senha do keyring
-        senha = self._obter_senha_keyring(servidor)
-        if not senha:
+        # Tentar obter senha criptografada
+        senha = self._obter_senha_criptografada(servidor)
+        if not senha or senha.startswith("[SENHA TRANCADA"):
             self.show()
             self.raise_()
             self.activateWindow()
-            self._notificar("RDP Connector", f"Senha necessária para {servidor}")
+            self._notificar("FreeRDP-GUI", f"Configure a senha para {servidor}")
             return
         
         # Usar opções da interface
         opcoes = self._obter_opcoes_conexao()
-
         
         # Iniciar conexão
         self._iniciar_conexao(host, usuario_padrao, senha, opcoes)
@@ -501,38 +643,30 @@ class RDPConnectorWindow(QMainWindow):
         """Inicia conexão RDP com parâmetros fornecidos"""
         logger.info(f"Iniciando conexão RDP para {host} com usuário {usuario}")
         
-        self._notificar("RDP Connector", f"Conectando a {host}...")
+        self._notificar("FreeRDP-GUI", f"Conectando a {host}...")
         
-        # INCREMENTAR CONTADOR DE CONEXÕES
+        # Incrementar contador de conexões
         self.incrementar_conexoes()
         
         # Minimizar janela
         self.hide()
         
         # Criar e iniciar thread
-        # Crie uma chave única para a conexão, como o host
         thread_id = host
-        # Crie e inicie a nova thread
         rdp_thread = RDPThread(host, usuario, senha, opcoes)
-        # Armazene a thread no dicionário
         self.rdp_threads[thread_id] = rdp_thread
-        # Conecte o sinal finished a um novo método que gerencie a finalização
         rdp_thread.finished.connect(lambda sucesso, mensagem: self._on_conexao_finalizada(thread_id, sucesso, mensagem))
         rdp_thread.start()
-        
-        # Desabilitar botão conectar
-        #self.btn_conectar.setEnabled(False)
-        #self.btn_conectar.setText("Conectando...")
     
     def _on_conexao_finalizada(self, thread_id: str, sucesso: bool, mensagem: str):
         """Chamado quando conexão RDP termina"""
-        # DECREMENTAR CONTADOR DE CONEXÕES - AQUI ESTÁ O PONTO CRUCIAL
+        # Decrementar contador de conexões
         self.decrementar_conexoes()
 
-         # Remova a thread do dicionário
+        # Remover thread do dicionário
         if thread_id in self.rdp_threads:
             thread = self.rdp_threads.pop(thread_id)
-            thread.deleteLater() # Limpa o objeto da memória
+            thread.deleteLater()
 
         # Reabilitar interface
         self.btn_conectar.setEnabled(True)
@@ -540,13 +674,13 @@ class RDPConnectorWindow(QMainWindow):
         
         # Notificar resultado
         if sucesso:
-            self._notificar("RDP Connector", mensagem)
+            self._notificar("FreeRDP-GUI", mensagem)
             logger.info(mensagem)
         else:
-            self._notificar("RDP Connector", f"Erro: {mensagem}", "error")
+            self._notificar("FreeRDP-GUI", f"Erro: {mensagem}", "error")
             logger.error(f"Erro na conexão: {mensagem}")
         
-        # Limpar thread CORRETAMENTE
+        # Limpar thread
         self._limpar_thread_rdp()
     
     def _notificar(self, titulo: str, mensagem: str, tipo: str = "information"):
@@ -570,9 +704,6 @@ class RDPConnectorWindow(QMainWindow):
             'resolucao': self.combo_resolucao.currentText(),
             'qualidade': self.combo_qualidade.currentText(),
             'salvar_senha': self.check_salvar_senha.isChecked(),
-            #Não quero geometria nem estado da Janela
-            #'geometry': self.saveGeometry(),
-            #'windowState': self.saveState()
         }
         
         self.settings_manager.salvar_configuracao_interface(config)
@@ -605,13 +736,6 @@ class RDPConnectorWindow(QMainWindow):
         if config.get('qualidade'):
             self.combo_qualidade.setCurrentText(config['qualidade'])
         
-        # Geometria da janela
-        #if config.get('geometry'):
-        #    self.restoreGeometry(config['geometry'])
-        #
-        #if config.get('windowState'):
-        #    self.restoreState(config['windowState'])
-        
         logger.debug("Configurações restauradas")
     
     def mostrar_logs(self):
@@ -624,9 +748,8 @@ class RDPConnectorWindow(QMainWindow):
         self.logs_window.activateWindow()
     
     def closeEvent(self, event):
-        """Evento de fechamento da janela - MÉTODO MODIFICADO"""
+        """Evento de fechamento da janela"""
         if self._fechar_de_verdade:
-            # Garantir que threads sejam finalizadas antes de fechar
             if not self._limpar_thread_rdp():
                 logger.warning("Forçando saída mesmo com thread ativa")
             self._salvar_configuracoes()
@@ -652,9 +775,8 @@ class RDPConnectorWindow(QMainWindow):
         # Se tiver system tray, minimizar
         if hasattr(self, 'system_tray') and self.system_tray.is_available():
             self.hide()
-            self._notificar("RDP Connector", "Aplicativo minimizado para a bandeja")
+            self._notificar("FreeRDP-GUI", "Aplicativo minimizado para a bandeja")
             event.ignore()
-            # Verificar se deve sair completamente
             self.verificar_saida_completa()
         else:
             self.sair_aplicacao()
@@ -664,7 +786,6 @@ class RDPConnectorWindow(QMainWindow):
         """Gerencia mudanças de estado da janela"""
         if event.type() == event.Type.WindowStateChange:
             if self.windowState() == Qt.WindowState.WindowMinimized:
-                # Se tem system tray, esconder quando minimizar
                 if hasattr(self, 'system_tray') and self.system_tray.is_available():
                     self.hide()
                     event.ignore()
@@ -677,8 +798,11 @@ class RDPConnectorWindow(QMainWindow):
         self.activateWindow()
 
     def close(self):
-        """Sair da aplicação explicitamente - MÉTODO MODIFICADO"""
-        print("Sinal sair_aplicacao recebido → encerrando de verdade")
+        """Sair da aplicação explicitamente"""
+        logger.info("Sinal sair_aplicacao recebido → encerrando de verdade")
         self._fechar_de_verdade = True
         super().close()
         QApplication.quit()
+
+# Manter compatibilidade com o nome antigo
+RDPConnectorWindow = FreeRDPGUIWindow

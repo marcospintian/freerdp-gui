@@ -1,19 +1,14 @@
-# RDP Connector Pro - Dependências
+# FreeRDP-GUI - Dependências Python
 
 # Interface gráfica
 PySide6>=6.5.0
 
-# Gerenciamento de senhas
+# Criptografia para senhas
+cryptography>=41.0.0
+
+# Opcional: Para compatibilidade com versões antigas (migração do keyring)
 keyring>=24.0.0
 
-# Sistema (geralmente já incluído no Python)
-configparser
-logging
-subprocess
-pathlib
-threading
-typing
-re
-os
-sys
-time
+# Dependências do sistema (instalar via package manager):
+# - freerdp2-x11 (Ubuntu/Debian: sudo apt install freerdp2-x11)
+# - libnotify-bin (Ubuntu/Debian: sudo apt install libnotify-bin) [opcional]

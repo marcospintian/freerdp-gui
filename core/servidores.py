@@ -1,5 +1,5 @@
 """
-Módulo para gerenciamento de servidores via arquivo INI
+Módulo para gerenciamento de servidores via arquivo INI com criptografia de senhas
 """
 
 import logging
@@ -8,15 +8,17 @@ from typing import Dict, Tuple, Optional
 from pathlib import Path
 
 from .utils import get_ini_path, validar_ip_porta
+from .crypto import get_crypto_manager
 
 logger = logging.getLogger(__name__)
 
 class ServidorManager:
-    """Gerenciador de servidores"""
+    """Gerenciador de servidores com suporte a senhas criptografadas"""
     
     def __init__(self):
         self.ini_path = get_ini_path()
         self.config = configparser.ConfigParser()
+        self.crypto_manager = get_crypto_manager()
         self._criar_arquivo_exemplo_se_necessario()
     
     def _criar_arquivo_exemplo_se_necessario(self):
@@ -25,6 +27,7 @@ class ServidorManager:
             self.config['Servidor1'] = {
                 'ip': '192.168.1.100:3389',
                 'usuario': 'administrador'
+                # Nota: senhas serão criptografadas quando salvas via interface
             }
             self.config['Servidor2'] = {
                 'ip': '10.0.0.50:3389', 
@@ -67,7 +70,7 @@ class ServidorManager:
         
         return servidores
     
-    def salvar_servidor(self, nome: str, ip: str, usuario: str) -> bool:
+    def salvar_servidor(self, nome: str, ip: str, usuario: str, senha: str = None) -> bool:
         """
         Salva servidor no arquivo INI
         
@@ -75,6 +78,7 @@ class ServidorManager:
             nome: Nome do servidor
             ip: Endereço IP:porta
             usuario: Nome do usuário
+            senha: Senha em texto claro (será criptografada automaticamente)
             
         Returns:
             True se salvou com sucesso
@@ -88,7 +92,17 @@ class ServidorManager:
             return False
         
         try:
-            self.config[nome] = {"ip": ip, "usuario": usuario}
+            # Criar seção do servidor
+            self.config[nome] = {
+                "ip": ip, 
+                "usuario": usuario
+            }
+            
+            # Criptografar e salvar senha se fornecida
+            if senha:
+                if not self.salvar_senha(nome, senha):
+                    logger.warning(f"Erro ao salvar senha para servidor '{nome}', mas servidor foi salvo")
+            
             self._salvar_config()
             logger.info(f"Servidor '{nome}' salvo com sucesso")
             return True
@@ -97,9 +111,156 @@ class ServidorManager:
             logger.error(f"Erro ao salvar servidor '{nome}': {str(e)}")
             return False
     
+    def salvar_senha(self, nome_servidor: str, senha: str) -> bool:
+        """
+        Salva senha criptografada para um servidor
+        
+        Args:
+            nome_servidor: Nome do servidor
+            senha: Senha em texto claro
+            
+        Returns:
+            True se salvou com sucesso
+        """
+        if not self.crypto_manager.is_unlocked():
+            logger.error("CryptoManager não está desbloqueado para salvar senha")
+            return False
+        
+        try:
+            # Criptografar senha
+            encrypted_password = self.crypto_manager.encrypt_password(senha, nome_servidor)
+            if not encrypted_password:
+                logger.error(f"Erro ao criptografar senha para '{nome_servidor}'")
+                return False
+            
+            # Salvar no INI
+            if nome_servidor not in self.config:
+                logger.error(f"Servidor '{nome_servidor}' não existe")
+                return False
+            
+            self.config[nome_servidor]['senha_encrypted'] = encrypted_password
+            self._salvar_config()
+            
+            logger.info(f"Senha criptografada salva para servidor '{nome_servidor}'")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erro ao salvar senha para '{nome_servidor}': {str(e)}")
+            return False
+    
+    def obter_senha(self, nome_servidor: str) -> Optional[str]:
+        """
+        Obtém senha descriptografada para um servidor
+        
+        Args:
+            nome_servidor: Nome do servidor
+            
+        Returns:
+            Senha em texto claro ou None se não encontrada/erro
+        """
+        if not self.crypto_manager.is_unlocked():
+            logger.error("CryptoManager não está desbloqueado para obter senha")
+            return None
+        
+        try:
+            self.config.read(self.ini_path, encoding='utf-8')
+            
+            if nome_servidor not in self.config:
+                logger.warning(f"Servidor '{nome_servidor}' não encontrado")
+                return None
+            
+            # Verificar se tem senha criptografada
+            if not self.config.has_option(nome_servidor, 'senha_encrypted'):
+                logger.debug(f"Servidor '{nome_servidor}' não tem senha salva")
+                return None
+            
+            encrypted_password = self.config[nome_servidor]['senha_encrypted']
+            
+            # Descriptografar
+            plain_password = self.crypto_manager.decrypt_password(encrypted_password, nome_servidor)
+            
+            if plain_password:
+                logger.debug(f"Senha obtida para servidor '{nome_servidor}'")
+            
+            return plain_password
+            
+        except Exception as e:
+            logger.error(f"Erro ao obter senha para '{nome_servidor}': {str(e)}")
+            return None
+    
+    def remover_senha(self, nome_servidor: str) -> bool:
+        """
+        Remove senha salva de um servidor
+        
+        Args:
+            nome_servidor: Nome do servidor
+            
+        Returns:
+            True se removeu com sucesso
+        """
+        try:
+            self.config.read(self.ini_path, encoding='utf-8')
+            
+            if nome_servidor not in self.config:
+                logger.warning(f"Servidor '{nome_servidor}' não encontrado")
+                return False
+            
+            if self.config.has_option(nome_servidor, 'senha_encrypted'):
+                self.config.remove_option(nome_servidor, 'senha_encrypted')
+                self._salvar_config()
+                logger.info(f"Senha removida do servidor '{nome_servidor}'")
+                return True
+            else:
+                logger.debug(f"Servidor '{nome_servidor}' não tinha senha salva")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Erro ao remover senha de '{nome_servidor}': {str(e)}")
+            return False
+    
+    def servidor_tem_senha_salva(self, nome_servidor: str) -> bool:
+        """
+        Verifica se servidor tem senha salva
+        
+        Args:
+            nome_servidor: Nome do servidor
+            
+        Returns:
+            True se tem senha salva
+        """
+        try:
+            self.config.read(self.ini_path, encoding='utf-8')
+            
+            return (nome_servidor in self.config and 
+                    self.config.has_option(nome_servidor, 'senha_encrypted'))
+                    
+        except Exception:
+            return False
+    
+    def listar_servidores_com_senha(self) -> list:
+        """
+        Lista servidores que têm senha salva
+        
+        Returns:
+            Lista com nomes dos servidores que têm senha
+        """
+        servidores_com_senha = []
+        
+        try:
+            self.config.read(self.ini_path, encoding='utf-8')
+            
+            for nome_servidor in self.config.sections():
+                if self.config.has_option(nome_servidor, 'senha_encrypted'):
+                    servidores_com_senha.append(nome_servidor)
+                    
+        except Exception as e:
+            logger.error(f"Erro ao listar servidores com senha: {str(e)}")
+        
+        return servidores_com_senha
+    
     def remover_servidor(self, nome: str) -> bool:
         """
-        Remove servidor do arquivo INI
+        Remove servidor do arquivo INI (incluindo senha)
         
         Args:
             nome: Nome do servidor a remover
@@ -144,6 +305,26 @@ class ServidorManager:
         
         return None
     
+    def obter_servidor_completo(self, nome: str) -> Optional[Tuple[str, str, str]]:
+        """
+        Obtém dados completos de um servidor (incluindo senha)
+        
+        Args:
+            nome: Nome do servidor
+            
+        Returns:
+            Tupla (ip, usuario, senha) ou None se não encontrado
+            Senha será None se não estiver salva ou crypto não estiver desbloqueado
+        """
+        dados_basicos = self.obter_servidor(nome)
+        if not dados_basicos:
+            return None
+        
+        ip, usuario = dados_basicos
+        senha = self.obter_senha(nome)
+        
+        return (ip, usuario, senha)
+    
     def listar_servidores(self) -> list:
         """
         Lista nomes dos servidores disponíveis
@@ -176,7 +357,7 @@ class ServidorManager:
     
     def renomear_servidor(self, nome_atual: str, nome_novo: str) -> bool:
         """
-        Renomeia um servidor
+        Renomeia um servidor (preservando senha criptografada)
         
         Args:
             nome_atual: Nome atual do servidor
@@ -194,15 +375,38 @@ class ServidorManager:
             return False
         
         try:
-            # Obter dados do servidor atual
-            dados = self.obter_servidor(nome_atual)
-            if not dados:
+            # Obter todos os dados do servidor atual
+            dados_completos = self.obter_servidor_completo(nome_atual)
+            if not dados_completos:
                 return False
             
-            ip, usuario = dados
+            ip, usuario, senha_descriptografada = dados_completos
+            
+            # Obter senha criptografada (se existir)
+            senha_encrypted = None
+            if self.config.has_option(nome_atual, 'senha_encrypted'):
+                senha_encrypted = self.config[nome_atual]['senha_encrypted']
             
             # Criar nova seção
-            self.config[nome_novo] = {"ip": ip, "usuario": usuario}
+            self.config[nome_novo] = {
+                "ip": ip, 
+                "usuario": usuario
+            }
+            
+            # Se tinha senha criptografada, re-criptografar com novo contexto
+            if senha_descriptografada and self.crypto_manager.is_unlocked():
+                # Re-criptografar com novo nome (para validação de contexto)
+                nova_senha_encrypted = self.crypto_manager.encrypt_password(
+                    senha_descriptografada, nome_novo
+                )
+                if nova_senha_encrypted:
+                    self.config[nome_novo]['senha_encrypted'] = nova_senha_encrypted
+                else:
+                    logger.warning(f"Erro ao re-criptografar senha para '{nome_novo}'")
+            elif senha_encrypted:
+                # Se não conseguiu descriptografar mas tem senha, manter como estava
+                # (usuário vai precisar reconfigurar a senha depois)
+                logger.warning(f"Senha de '{nome_atual}' não pôde ser migrada para '{nome_novo}' - crypto não desbloqueado")
             
             # Remover seção antiga
             self.config.remove_section(nome_atual)
@@ -217,8 +421,12 @@ class ServidorManager:
     
     def _salvar_config(self):
         """Salva configuração no arquivo INI"""
-        with open(self.ini_path, 'w', encoding='utf-8') as f:
-            self.config.write(f)
+        try:
+            with open(self.ini_path, 'w', encoding='utf-8') as f:
+                self.config.write(f)
+        except Exception as e:
+            logger.error(f"Erro ao salvar configuração INI: {str(e)}")
+            raise
     
     def recarregar(self):
         """Recarrega configuração do arquivo"""
@@ -228,6 +436,65 @@ class ServidorManager:
             logger.debug("Configuração recarregada do arquivo INI")
         except Exception as e:
             logger.error(f"Erro ao recarregar configuração: {str(e)}")
+    
+    def migrar_keyring_para_crypto(self) -> int:
+        """
+        Migra senhas do keyring para criptografia local
+        (função de migração para quem já usa versão anterior)
+        
+        Returns:
+            Número de senhas migradas
+        """
+        senhas_migradas = 0
+        
+        try:
+            import keyring
+        except ImportError:
+            logger.info("Keyring não disponível, pulando migração")
+            return 0
+        
+        if not self.crypto_manager.is_unlocked():
+            logger.error("CryptoManager deve estar desbloqueado para migração")
+            return 0
+        
+        try:
+            self.config.read(self.ini_path, encoding='utf-8')
+            
+            for nome_servidor in self.config.sections():
+                # Pular servidores que já têm senha criptografada
+                if self.config.has_option(nome_servidor, 'senha_encrypted'):
+                    continue
+                
+                # Tentar obter senha do keyring
+                try:
+                    usuario = self.config[nome_servidor].get('usuario', '')
+                    if not usuario:
+                        continue
+                    
+                    senha_keyring = keyring.get_password(nome_servidor, usuario)
+                    if senha_keyring:
+                        # Migrar para criptografia local
+                        if self.salvar_senha(nome_servidor, senha_keyring):
+                            # Remover do keyring
+                            try:
+                                keyring.delete_password(nome_servidor, usuario)
+                                senhas_migradas += 1
+                                logger.info(f"Senha migrada do keyring para crypto: {nome_servidor}")
+                            except Exception as e:
+                                logger.warning(f"Erro ao remover senha do keyring para {nome_servidor}: {e}")
+                        else:
+                            logger.error(f"Erro ao migrar senha para {nome_servidor}")
+                
+                except Exception as e:
+                    logger.warning(f"Erro ao migrar senha de {nome_servidor}: {e}")
+            
+            if senhas_migradas > 0:
+                logger.info(f"Migração concluída: {senhas_migradas} senhas migradas do keyring")
+            
+        except Exception as e:
+            logger.error(f"Erro durante migração do keyring: {e}")
+        
+        return senhas_migradas
 
 # Instância global do gerenciador
 _servidor_manager = None

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDP Connector Pro - Ponto de entrada da aplicação
+FreeRDP-GUI - Interface gráfica moderna para conexões RDP
 """
 
 import sys
@@ -18,12 +18,20 @@ except ImportError:
     print("Instale com: pip install PySide6")
     sys.exit(1)
 
+# Verificar dependência de criptografia
+try:
+    from cryptography.fernet import Fernet
+except ImportError:
+    print("Erro: Biblioteca 'cryptography' não está instalada.")
+    print("Instale com: pip install cryptography")
+    sys.exit(1)
+
 # Adicionar diretório do projeto ao path
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.utils import setup_logging, verificar_comando_disponivel
-from gui.main_window import RDPConnectorWindow
+from gui.main_window import FreeRDPGUIWindow
 
 # Variáveis globais
 shared_memory = None
@@ -45,6 +53,31 @@ def signal_handler(signum, frame):
     cleanup_shared_memory()
     sys.exit(0)
 
+def verificar_dependencias():
+    """Verifica dependências críticas"""
+    dependencias_faltando = []
+    
+    # Verificar xfreerdp
+    if not verificar_comando_disponivel("xfreerdp"):
+        dependencias_faltando.append("xfreerdp (instale: sudo apt install freerdp2-x11)")
+    
+    if dependencias_faltando:
+        erro = "Dependências faltando:\n\n" + "\n".join([f"• {dep}" for dep in dependencias_faltando])
+        erro += "\n\nInstale as dependências e tente novamente."
+        
+        # Tentar notificação desktop
+        if verificar_comando_disponivel("notify-send"):
+            subprocess.run([
+                "notify-send", 
+                "-i", "error",
+                "FreeRDP-GUI - Dependências", 
+                "Dependências faltando. Veja o terminal."
+            ])
+        
+        return False, erro
+    
+    return True, ""
+
 def main():
     """Função principal da aplicação"""
     global shared_memory, logger
@@ -52,10 +85,13 @@ def main():
     # Criar a aplicação Qt primeiro
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+    app.setApplicationName("FreeRDP-GUI")
+    app.setApplicationVersion("2.0.0")
+    app.setOrganizationName("FreeRDP-GUI")
 
     # Configurar logging
     logger = setup_logging()
-    logger.info("=== RDP Connector Pro iniciado ===")
+    logger.info("=== FreeRDP-GUI iniciado ===")
 
     # Ativar handler para sinais do sistema
     signal.signal(signal.SIGINT, signal_handler)
@@ -63,11 +99,18 @@ def main():
     # Adicionar diretório core ao path
     sys.path.insert(0, str(PROJECT_ROOT / "core"))
 
+    # Verificar dependências críticas
+    deps_ok, deps_erro = verificar_dependencias()
+    if not deps_ok:
+        logger.error("Dependências faltando")
+        QMessageBox.critical(None, "Dependências Faltando", deps_erro)
+        return 1
+
     # Criar um identificador único para a aplicação
-    app_id = '{b6166164-9b26-4c4f-9e7d-1c39c277f9c8}'
+    app_id = '{freerdp-gui-b6166164-9b26-4c4f-9e7d-1c39c277f9c8}'
     shared_memory = QSharedMemory(app_id)
 
-    # Forçar detach se houver memória “fantasma”
+    # Forçar detach se houver memória "fantasma"
     if shared_memory.isAttached():
         logger.warning("Memória compartilhada fantasma encontrada. Liberando...")
         shared_memory.detach()
@@ -75,7 +118,7 @@ def main():
     # Tentar anexar à memória compartilhada. Se falhar, outra instância está rodando
     if shared_memory.attach():
         logger.warning("Outra instância já está rodando. Encerrando.")
-        QMessageBox.warning(None, "RDP Connector Pro",
+        QMessageBox.warning(None, "FreeRDP-GUI",
                             "Outra instância da aplicação já está rodando. Encerrando.")
         return 0
 
@@ -85,7 +128,8 @@ def main():
         if verificar_comando_disponivel("notify-send"):
             subprocess.run([
                 "notify-send",
-                "Falha ao iniciar o aplicativo",
+                "-i", "error",
+                "FreeRDP-GUI - Erro",
                 "Falha ao criar memória compartilhada. Por favor, reinicie a máquina."
             ])
         QMessageBox.critical(None, "Erro",
@@ -97,19 +141,34 @@ def main():
 
     # Criar a janela principal
     try:
-        window = RDPConnectorWindow()
+        window = FreeRDPGUIWindow()
     except ImportError as e:
         logger.exception(f"Erro de importação ao iniciar: {e}")
         QMessageBox.critical(None, "Erro de Inicialização",
                              f"Erro: {e}.\nVerifique se todas as bibliotecas estão instaladas.")
+        return 1
+    except Exception as e:
+        logger.exception(f"Erro inesperado ao iniciar: {e}")
+        QMessageBox.critical(None, "Erro de Inicialização",
+                             f"Erro inesperado: {e}")
         return 1
 
     # Conectar sinais de encerramento
     app.aboutToQuit.connect(cleanup_shared_memory)
     window.aplicacao_deve_sair.connect(window.sair_aplicacao)
 
+    # Mostrar janela
     window.show()
     logger.info("Interface inicializada com sucesso")
+    
+    # Notificação de início
+    if verificar_comando_disponivel("notify-send"):
+        subprocess.run([
+            "notify-send",
+            "-i", "krdc",
+            "FreeRDP-GUI",
+            "Aplicação iniciada com sucesso"
+        ])
 
     # Executar aplicação
     result = app.exec()
