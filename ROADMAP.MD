@@ -1,9 +1,3 @@
-## 🔒 Segurança de Senhas (Implementado na v2.0)
-
-- As senhas agora são armazenadas de forma criptografada (AES-256) diretamente no arquivo servidores.ini.
-- Não há mais dependência de keyring, facilitando portabilidade e manutenção.
-- O campo de senha nunca é salvo em texto claro.
-
 # 🗺️ ROADMAP - RDP Connector Pro
 
 ## 📋 Visão Geral

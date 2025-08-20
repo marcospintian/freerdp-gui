@@ -88,14 +88,11 @@ class ServidorManager:
             return False
         
         try:
-            # Preserva senha criptografada, se existir
-            senha = self.config[nome].get('senha') if nome in self.config else None
             self.config[nome] = {"ip": ip, "usuario": usuario}
-            if senha:
-                self.config[nome]['senha'] = senha
             self._salvar_config()
             logger.info(f"Servidor '{nome}' salvo com sucesso")
             return True
+            
         except Exception as e:
             logger.error(f"Erro ao salvar servidor '{nome}': {str(e)}")
             return False
@@ -201,18 +198,19 @@ class ServidorManager:
             dados = self.obter_servidor(nome_atual)
             if not dados:
                 return False
+            
             ip, usuario = dados
-            # Preservar senha criptografada, se existir
-            senha = self.config[nome_atual].get('senha') if nome_atual in self.config else None
+            
             # Criar nova seção
             self.config[nome_novo] = {"ip": ip, "usuario": usuario}
-            if senha:
-                self.config[nome_novo]['senha'] = senha
+            
             # Remover seção antiga
             self.config.remove_section(nome_atual)
+            
             self._salvar_config()
             logger.info(f"Servidor renomeado de '{nome_atual}' para '{nome_novo}'")
             return True
+            
         except Exception as e:
             logger.error(f"Erro ao renomear servidor: {str(e)}")
             return False

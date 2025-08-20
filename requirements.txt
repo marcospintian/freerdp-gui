@@ -4,6 +4,7 @@
 PySide6>=6.5.0
 
 # Gerenciamento de senhas
+keyring>=24.0.0
 
 # Sistema (geralmente já incluído no Python)
 configparser

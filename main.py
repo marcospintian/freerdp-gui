@@ -16,20 +16,18 @@ try:
 except ImportError:
     print("Erro: PySide6 não está instalado.")
     print("Instale com: pip install PySide6")
-    pisys.exit(1)
+    sys.exit(1)
 
 # Adicionar diretório do projeto ao path
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.utils import setup_logging, verificar_comando_disponivel
-
-# Inicializar logger globalmente para uso em qualquer ponto
-logger = setup_logging()
 from gui.main_window import RDPConnectorWindow
 
 # Variáveis globais
 shared_memory = None
+logger = None
 
 def cleanup_shared_memory():
     """Limpa a memória compartilhada na saída"""
@@ -48,18 +46,16 @@ def signal_handler(signum, frame):
     sys.exit(0)
 
 def main():
-    # Migrar senhas em texto claro para criptografadas, se necessário
-    from core.migracao_senhas import migrar_senhas_ini
-    ini_path = str(PROJECT_ROOT / 'servidores.ini')
-    migrar_senhas_ini(ini_path, logger)
     """Função principal da aplicação"""
-    global shared_memory
-
-    logger.info("=== RDP Connector Pro iniciado ===")
+    global shared_memory, logger
 
     # Criar a aplicação Qt primeiro
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+
+    # Configurar logging
+    logger = setup_logging()
+    logger.info("=== RDP Connector Pro iniciado ===")
 
     # Ativar handler para sinais do sistema
     signal.signal(signal.SIGINT, signal_handler)
