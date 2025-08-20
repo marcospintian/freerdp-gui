@@ -53,13 +53,13 @@ def main():
     """Função principal da aplicação"""
     global shared_memory, logger
 
+    # Configurar logging antes de qualquer uso de logger
+    logger = setup_logging()
+    logger.info("=== RDP Connector Pro iniciado ===")
+
     # Criar a aplicação Qt primeiro
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
-
-    # Configurar logging
-    logger = setup_logging()
-    logger.info("=== RDP Connector Pro iniciado ===")
 
     # Ativar handler para sinais do sistema
     signal.signal(signal.SIGINT, signal_handler)
