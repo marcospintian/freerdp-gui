@@ -8,6 +8,15 @@ Interface gráfica moderna e intuitiva para conexões RDP usando FreeRDP. Agora 
 - 🏷️ **Novo nome**: FreeRDP-GUI (mais descritivo)
 - 🛡️ **Master password** para proteger todas as senhas
 - 💾 **Portabilidade total** - um arquivo INI com tudo
+- 🔒 **Instância Única**: Prevenção de múltiplas instâncias executando simultaneamente
+- 🎯 **Controle Inteligente de Conexões**: Sistema avançado de gerenciamento de conexões ativas
+- 🔧 **Sistema de Limpeza Automática**: Gerenciamento seguro de threads e recursos
+- 🌟 **System Tray Inteligente**: Comportamento aprimorado para minimização e restauração
+- 📱 **Notificações Desktop**: Integração com sistema de notificações do Linux
+- ⚡ **Conexões Rápidas**: Conectar diretamente pelo system tray com senhas salvas
+- 📊 **Logging Avançado**: Sistema de logs com rotação automática e visualizador integrado
+- 🔄 **Auto-salvamento**: Configurações salvas automaticamente a cada conexão
+- 📈 **Histórico de Conexões**: Rastreamento das últimas conexões realizadas
 
 ## 🔧 Instalação
 
@@ -214,4 +223,4 @@ GPL v3 - Veja LICENSE para detalhes.
 
 ---
 
-**FreeRDP-GUI v2.0** - Interface moderna para conexões RDP seguras 🛡️
+**FreeRDP-GUI v2.0** - *Desenvolvido com ❤️ e ☕ para simplificar conexões RDP no Linux*
