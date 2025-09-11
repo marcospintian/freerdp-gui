@@ -67,8 +67,8 @@ class GerenciadorServidoresWidget(QWidget):
         form_layout.addRow("Nome:", self.input_nome)
         
         self.input_ip = QLineEdit()
-        self.input_ip.setPlaceholderText("192.168.1.100:3389")
-        form_layout.addRow("IP:Porta:", self.input_ip)
+        self.input_ip.setPlaceholderText("192.168.1.100 ou 192.168.1.100:3389")
+        form_layout.addRow("IP/Hostname:", self.input_ip)
         
         self.input_usuario = QLineEdit()
         form_layout.addRow("Usuário:", self.input_usuario)
@@ -306,7 +306,13 @@ class GerenciadorServidoresWidget(QWidget):
             return False
         
         if not validar_ip_porta(ip):
-            QMessageBox.warning(self, "Erro", "IP inválido. Use o formato: 192.168.1.100:3389")
+            QMessageBox.warning(self, "Erro", 
+                               "IP/hostname inválido.\n\n"
+                               "Exemplos válidos:\n"
+                               "• 192.168.1.100\n"
+                               "• 192.168.1.100:3389\n"
+                               "• servidor.empresa.com\n"
+                               "• servidor.empresa.com:3389")
             return False
         
         return True

@@ -82,10 +82,63 @@ def verificar_comando_disponivel(comando: str) -> bool:
         return False
 
 def validar_ip_porta(ip_porta: str) -> bool:
-    """Validação simples de IP:porta usando regex"""
-    # Aceita IPs, hostnames e portas
-    pattern = r'^[a-zA-Z0-9.-]+:\d+$'
-    return bool(re.match(pattern, ip_porta))
+    """
+    Validação de IP/hostname com porta opcional
+    Aceita: 192.168.1.100, 192.168.1.100:3389, servidor.com, servidor.com:3389
+    """
+    if not ip_porta or not ip_porta.strip():
+        return False
+    
+    ip_porta = ip_porta.strip()
+    
+    # Padrão com porta especificada
+    if ':' in ip_porta:
+        try:
+            host, porta_str = ip_porta.rsplit(':', 1)
+            porta = int(porta_str)
+            # Validar se porta está em range válido
+            if not (1 <= porta <= 65535):
+                return False
+        except (ValueError, IndexError):
+            return False
+    else:
+        # Sem porta especificada - usar padrão 3389
+        host = ip_porta
+    
+    # Validar hostname/IP (básico)
+    # Aceita letras, números, pontos, hífens
+    import re
+    pattern = r'^[a-zA-Z0-9.-]+$'
+    if not re.match(pattern, host):
+        return False
+    
+    # Não pode começar ou terminar com ponto ou hífen
+    if host.startswith('.') or host.endswith('.') or host.startswith('-') or host.endswith('-'):
+        return False
+    
+    return True
+
+def normalizar_ip_porta(ip_porta: str) -> str:
+    """
+    Normaliza IP/porta adicionando :3389 se não especificado
+    
+    Args:
+        ip_porta: IP ou hostname com ou sem porta
+        
+    Returns:
+        IP/hostname com porta (sempre no formato host:porta)
+    """
+    if not ip_porta:
+        return ip_porta
+    
+    ip_porta = ip_porta.strip()
+    
+    # Se já tem porta, retornar como está
+    if ':' in ip_porta:
+        return ip_porta
+    
+    # Adicionar porta padrão
+    return f"{ip_porta}:3389"
 
 def notificar_desktop(titulo: str, mensagem: str, icone: str = "information") -> bool:
     """

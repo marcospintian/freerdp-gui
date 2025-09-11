@@ -7,7 +7,7 @@ import configparser
 from typing import Dict, Tuple, Optional
 from pathlib import Path
 
-from .utils import get_ini_path, validar_ip_porta
+from .utils import get_ini_path, validar_ip_porta, normalizar_ip_porta
 from .crypto import get_crypto_manager
 
 logger = logging.getLogger(__name__)
@@ -25,13 +25,17 @@ class ServidorManager:
         """Cria arquivo INI de exemplo se não existir"""
         if not self.ini_path.exists():
             self.config['Servidor1'] = {
-                'ip': '192.168.1.100:3389',
+                'ip': '192.168.1.100',  # Porta padrão será adicionada automaticamente
                 'usuario': 'administrador'
                 # Nota: senhas serão criptografadas quando salvas via interface
             }
             self.config['Servidor2'] = {
-                'ip': '10.0.0.50:3389', 
+                'ip': '10.0.0.50:3389',  # Com porta específica
                 'usuario': 'user'
+            }
+            self.config['ServidorEmpresa'] = {
+                'ip': 'rdp.empresa.com',  # Hostname sem porta
+                'usuario': 'funcionario'
             }
             
             try:
@@ -76,7 +80,7 @@ class ServidorManager:
         
         Args:
             nome: Nome do servidor
-            ip: Endereço IP:porta
+            ip: Endereço IP ou hostname (porta opcional)
             usuario: Nome do usuário
             senha: Senha em texto claro (será criptografada automaticamente)
             
@@ -87,14 +91,18 @@ class ServidorManager:
             logger.error("Dados inválidos para salvar servidor")
             return False
         
+        # Validar e normalizar IP/porta
         if not validar_ip_porta(ip):
             logger.error(f"IP inválido: {ip}")
             return False
         
+        # Normalizar IP (adicionar :3389 se não especificado)
+        ip_normalizado = normalizar_ip_porta(ip)
+        
         try:
             # Criar seção do servidor
             self.config[nome] = {
-                "ip": ip, 
+                "ip": ip_normalizado, 
                 "usuario": usuario
             }
             

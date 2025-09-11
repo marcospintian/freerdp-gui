@@ -1,12 +1,12 @@
 # FreeRDP-GUI v2.0 🚀
 
-Interface gráfica moderna e intuitiva para conexões RDP usando FreeRDP. Agora com **criptografia local de senhas** e preparado para distribuição via Flatpak, AppImage, DEB e RPM.
+Interface gráfica moderna e intuitiva para conexões RDP usando FreeRDP. Agora com **sistema híbrido de criptografia de senhas** e preparado para distribuição via Flatpak, AppImage, DEB e RPM.
 
 ## ✨ Novidades da v2.0
 
-- 🔐 **Sistema próprio de criptografia** - Senhas seguras sem depender do keyring
+- 🔐 **Sistema híbrido de criptografia** - Funciona com chave padrão automática ou master password personalizada
 - 🏷️ **Novo nome**: FreeRDP-GUI (mais descritivo)
-- 🛡️ **Master password** para proteger todas as senhas
+- 🛡️ **Master password opcional** para controle total sobre as senhas
 - 💾 **Portabilidade total** - um arquivo INI com tudo
 - 🔒 **Instância Única**: Prevenção de múltiplas instâncias executando simultaneamente
 - 🎯 **Controle Inteligente de Conexões**: Sistema avançado de gerenciamento de conexões ativas
@@ -51,23 +51,32 @@ python main.py
 
 ## 🔐 Sistema de Senhas
 
-### Master Password
-- **Primeira execução**: Configure uma master password para proteger suas senhas RDP
-- **Segurança**: Usa PBKDF2 com 100.000 iterações + AES-256
-- **Portabilidade**: Funciona em qualquer distribuição Linux
+### Sistema Híbrido - Duas Opções:
+
+#### 1. **Chave Padrão (Automática)** 🔑
+- **Pronto para usar**: Funciona imediatamente, sem configuração
+- **Automático**: Senhas criptografadas automaticamente com chave baseada no sistema
+- **Simples**: Não precisa lembrar de senhas extras
+- **Seguro**: Usa PBKDF2 + AES-256, única por instalação/usuário
+
+#### 2. **Master Password Personalizada** 🔐
+- **Controle total**: Você define uma senha mestre
+- **Trancar/Destrancar**: Pode bloquear temporariamente o acesso às senhas
+- **Mais seguro**: Proteção adicional com sua senha personalizada
+- **Migração**: Converte automaticamente da chave padrão
 
 ### Como Funciona
-1. **Master password** protege todas as senhas RDP
-2. **Criptografia local** - senhas ficam no arquivo `servidores.ini`
-3. **Sem dependências** de keyring/kwallet
-4. **Backup simples** - copie `servidores.ini` + `.master_salt`
+1. **Primeira execução**: Sistema usa chave padrão automaticamente
+2. **Opcional**: Configure master password personalizada para mais controle
+3. **Criptografia local** - senhas ficam no arquivo `servidores.ini`
+4. **Sem dependências** de keyring/kwallet
+5. **Backup simples** - copie `servidores.ini` + arquivos de configuração
 
-### Migração do Keyring
-Se você usava a versão anterior com keyring:
-
-```bash
-python migrate_to_crypto.py
-```
+### Configuração da Master Password
+1. **Menu Senhas** → **Configurar Master Password**
+2. Define sua senha personalizada
+3. Sistema migra automaticamente todas as senhas existentes
+4. Agora você pode trancar/destrancar quando quiser
 
 ## 📱 Interface
 
@@ -77,15 +86,21 @@ python migrate_to_crypto.py
 - **Gerenciar Servidores**: CRUD completo de servidores
 
 ### Menu Senhas
-- **Configurar Master Password**: Primeira configuração
+- **Configurar Master Password**: Primeira configuração da senha personalizada
 - **Alterar Master Password**: Trocar senha existente
-- **Trancar/Destrancar**: Controle de acesso às senhas
-- **Status das Senhas**: Ver quais servidores têm senha salva
+- **Remover Master Password**: Voltar para chave padrão
+- **Trancar/Destrancar**: Controle de acesso às senhas (só com master password)
+- **Status do Sistema**: Ver tipo de criptografia e senhas salvas
 
 ### System Tray
 - **Conexão rápida** para servidores salvos
 - **Acesso aos logs**
 - **Controle da janela principal**
+
+### Indicadores Visuais
+- 🔑 **Chave padrão**: Senha criptografada automaticamente
+- 🔐 **Master password**: Senha protegida por master password personalizada
+- 🔒 **Trancado**: Senhas temporariamente bloqueadas
 
 ## 🏗️ Estrutura do Projeto
 
@@ -93,21 +108,19 @@ python migrate_to_crypto.py
 freerdp-gui/
 ├── main.py                    # Ponto de entrada
 ├── core/                      # Lógica de negócio
-│   ├── crypto.py             # 🆕 Sistema de criptografia
+│   ├── crypto.py             # 🆕 Sistema híbrido de criptografia
 │   ├── rdp.py                # Conexões RDP
-│   ├── servidores.py         # 🔄 Gerenciamento (com crypto)
+│   ├── servidores.py         # 🔄 Gerenciamento (com crypto integrado)
 │   ├── settings.py           # Configurações da aplicação
 │   └── utils.py              # Funções utilitárias
 ├── gui/                      # Interface gráfica
 │   ├── main_window.py        # 🔄 Janela principal (FreeRDP-GUI)
 │   ├── master_password_dialog.py # 🆕 Dialogs de master password
 │   ├── gerenciador.py        # Widget de gerenciamento
-│   ├── senha_dialog.py       # Dialogs de senha
 │   ├── logs_window.py        # Visualização de logs
 │   └── system_tray.py        # System tray
 ├── assets/                   # Recursos
 │   └── icons/                # Ícones da aplicação
-├── migrate_to_crypto.py      # 🆕 Script de migração
 ├── servidores.ini            # Configuração de servidores
 └── requirements.txt          # 🔄 Dependências (+ cryptography)
 ```
@@ -117,19 +130,25 @@ freerdp-gui/
 ### `servidores.ini`
 ```ini
 [Servidor1]
-ip = 192.168.1.100:3389
+ip = 192.168.1.100              # Porta 3389 automática
 usuario = administrador
 senha_encrypted = eyJ2ZXJzaW9uIjoxLCJkYXRhIjoi...  # 🆕 Criptografada
 
 [Servidor2]
-ip = 10.0.0.50:3389
+ip = 10.0.0.50:3389            # Porta específica
 usuario = user
+senha_encrypted = eyJ2ZXJzaW9uIjoxLCJkYXRhIjoi...
+
+[ServidorEmpresa]
+ip = rdp.empresa.com           # Hostname sem porta
+usuario = funcionario
 senha_encrypted = eyJ2ZXJzaW9uIjoxLCJkYXRhIjoi...
 ```
 
-### `.master_salt` (oculto)
-- Salt da master password
-- **Importante**: Faça backup junto com `servidores.ini`
+### `~/.config/freerdp-gui/`
+- `.master_salt`: Salt da master password (se configurada)
+- `.has_custom_password`: Marca presença de master password personalizada
+- **Importante**: Faça backup da pasta completa
 
 ## 🚀 Recursos Avançados
 
@@ -151,7 +170,14 @@ senha_encrypted = eyJ2ZXJzaW9uIjoxLCJkYXRhIjoi...
 - ➕ Criar/editar/remover servidores
 - 🔄 Renomear servidores (preserva senhas)
 - 💾 Senhas criptografadas automaticamente
-- 🔍 Validação de IP:porta
+- 🔍 Validação de IP/hostname (porta 3389 opcional)
+- 🌐 Suporte a hostnames e IPs
+
+### Gerenciamento de Threads e Conexões
+- 🧵 **Threads RDP seguras**: Cada conexão roda em thread separada
+- 🔄 **Cleanup automático**: Finalização segura de todas as threads
+- 📊 **Contador de conexões**: Controle de conexões ativas
+- 🚪 **Saída inteligente**: Aguarda conexões terminarem antes de sair
 
 ## 🛠️ Desenvolvimento
 
@@ -161,7 +187,7 @@ senha_encrypted = eyJ2ZXJzaW9uIjoxLCJkYXRhIjoi...
 python main.py
 
 # Ver logs em tempo real
-tail -f ~/.config/freerdp-gui.log
+tail -f ~/.config/rdp-connector.log
 ```
 
 ### Contribuindo
@@ -169,7 +195,6 @@ tail -f ~/.config/freerdp-gui.log
 2. Crie uma branch para sua feature
 3. Teste com diferentes distribuições
 4. Envie um PR
-
 
 ## 🔧 Troubleshooting
 
@@ -185,27 +210,39 @@ sudo dnf install freerdp
 sudo pacman -S freerdp
 ```
 
-### Erro: "Master password incorreta"
-1. Verifique se digitou corretamente
-2. Se esqueceu: delete `.master_salt` (⚠️ perde todas as senhas)
-3. Use `migrate_to_crypto.py` para reconfigurar
+### Problemas com Master Password
+1. **Esqueceu a master password**: 
+   - Menu Senhas → Remover Master Password
+   - Volta para chave padrão (preserva todas as senhas)
+2. **Senhas trancadas**: Menu Senhas → Destrancar Senhas
+3. **Migração**: Sistema migra automaticamente ao configurar master password
 
 ### Senhas não aparecem
-1. Verifique se crypto está desbloqueado (Menu → Senhas → Status)
-2. Configure master password se for primeira vez
+1. Verifique se crypto está desbloqueado (Menu → Senhas → Status do Sistema)
+2. Para master password: Menu → Senhas → Destrancar Senhas
 3. Check logs: Menu → Ver Logs
+
+### Problemas de Threads/Conexões
+1. **Aplicação não fecha**: Aguarde threads RDP terminarem ou force Ctrl+C
+2. **Conexões ativas**: System tray mostra conexões em andamento
+3. **Cleanup automático**: Aplicação finaliza threads automaticamente
 
 ## 📋 Changelog
 
-### v2.0.1 (Nova Major Version)
-- 🔐 Sistema próprio de criptografia de senhas
+### v2.0.0 (Nova Major Version)
+- 🔐 Sistema híbrido de criptografia (chave padrão + master password opcional)
 - 🏷️ Rename para FreeRDP-GUI
 - 📦 Preparação para distribuição moderna
-- 🔄 Migração automática do keyring
-- 🛡️ Master password com AES-256
+- 🛡️ Master password opcional com AES-256
 - 💾 Portabilidade total dos dados
 - 🎨 Interface aprimorada com indicadores de senha
 - 🔧 Menu dedicado para gerenciamento de senhas
+- 🧵 Gerenciamento avançado de threads RDP
+- 🔒 Controle de instância única
+- 📊 Sistema de logging com rotação
+- 🌟 System tray inteligente com conexões rápidas
+- 📱 Notificações desktop integradas
+- 🌐 Porta RDP opcional (3389 padrão automático)
 
 ### v1.x (Legacy)
 - Sistema baseado em keyring
@@ -218,7 +255,7 @@ GPL v3 - Veja LICENSE para detalhes.
 ## 🙋‍♂️ Suporte
 
 - **Issues**: Use o GitHub Issues
-- **Logs**: `~/.config/freerdp-gui.log`
+- **Logs**: `~/.config/rdp-connector.log`
 - **Config**: `~/.config/freerdp-gui/`
 
 ---

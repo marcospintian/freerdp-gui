@@ -19,7 +19,7 @@ except ImportError as e:
 from core.servidores import get_servidor_manager
 from core.settings import get_settings_manager, get_configuracoes_app
 from core.rdp import RDPThread, criar_opcoes_padrao
-from core.utils import SOM_MAP, RESOLUCAO_MAP, QUALIDADE_MAP, notificar_desktop, verificar_comando_disponivel
+from core.utils import SOM_MAP, RESOLUCAO_MAP, QUALIDADE_MAP, notificar_desktop, verificar_comando_disponivel, validar_ip_porta, normalizar_ip_porta
 from core.crypto import get_crypto_manager
 
 from .gerenciador import GerenciadorServidoresWidget
@@ -432,9 +432,9 @@ class FreeRDPGUIWindow(QMainWindow):
         servidor_layout.addRow("Servidor:", self.combo_servidor)
         
         self.edit_ip_manual = QLineEdit()
-        self.edit_ip_manual.setPlaceholderText("Digite IP:porta (ex: 192.168.1.100:3389)")
+        self.edit_ip_manual.setPlaceholderText("Digite IP/hostname (ex: 192.168.1.100 ou servidor.com)")
         self.edit_ip_manual.setVisible(False)
-        servidor_layout.addRow("IP Manual:", self.edit_ip_manual)
+        servidor_layout.addRow("IP/Hostname:", self.edit_ip_manual)
         
         layout.addLayout(servidor_layout)
         
@@ -674,9 +674,14 @@ class FreeRDPGUIWindow(QMainWindow):
             if not host:
                 return False, "Digite o IP para conexão manual"
             
-            if ":" not in host:
-                host = f"{host}:3389"
-                self.edit_ip_manual.setText(host)
+            # Validar formato
+            if not validar_ip_porta(host):
+                return False, "IP/hostname inválido. Use: 192.168.1.100 ou 192.168.1.100:3389"
+            
+            # Normalizar (adicionar porta se necessário)
+            host_normalizado = normalizar_ip_porta(host)
+            self.edit_ip_manual.setText(host_normalizado)
+            
         else:
             if servidor not in self.servidores:
                 return False, "Servidor inválido"
