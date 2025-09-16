@@ -703,7 +703,7 @@ class FreeRDPGUIWindow(QMainWindow):
     def _conectar(self):
         """Inicia conexão RDP"""
         # Verificar dependências
-        if not verificar_comando_disponivel("xfreerdp"):
+        if not verificar_comando_disponivel("xfreerdp3"):
             QMessageBox.critical(self, "Dependências", 
                                "xfreerdp não encontrado. Instale o pacote freerdp.")
             return

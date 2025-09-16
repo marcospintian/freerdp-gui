@@ -71,7 +71,7 @@ class RDPThread(QThread):
     def _construir_comando_rdp(self) -> list:
         """Constrói comando xfreerdp com todas as opções"""
         cmd = [
-            "xfreerdp",
+            "xfreerdp3",
             f"/u:{self.usuario}",
             f"/p:{self.senha}",
             f"/v:{self.host}",

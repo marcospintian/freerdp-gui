@@ -58,8 +58,8 @@ def verificar_dependencias():
     dependencias_faltando = []
     
     # Verificar xfreerdp
-    if not verificar_comando_disponivel("xfreerdp"):
-        dependencias_faltando.append("xfreerdp (instale: sudo apt install freerdp2-x11)")
+    if not verificar_comando_disponivel("xfreerdp3"):
+        dependencias_faltando.append("xfreerdp (instale: sudo apt install freerdp3-x11)")
     
     if dependencias_faltando:
         erro = "Dependências faltando:\n\n" + "\n".join([f"• {dep}" for dep in dependencias_faltando])
