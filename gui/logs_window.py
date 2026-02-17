@@ -11,11 +11,11 @@ try:
         QTextEdit, QPushButton, QMessageBox
     )
     from PySide6.QtCore import QTimer
-    from PySide6.QtGui import QFont
+    from PySide6.QtGui import QFont, QIcon
 except ImportError as e:
     raise ImportError(f"PySide6 não encontrado: {e}")
 
-from core.utils import get_log_path, ler_arquivo_texto, arquivo_existe
+from core.utils import get_log_path, ler_arquivo_texto, arquivo_existe, get_project_root
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,19 @@ class LogsWindow(QDialog):
     def _init_ui(self):
         """Inicializa interface do usuário"""
         self.setWindowTitle("Logs - RDP Connector Pro")
+        # Definir ícone da janela de logs usando assets com fallback
+        try:
+            icon_path = get_project_root() / "assets" / "rdp-icon.png"
+            if arquivo_existe(str(icon_path)):
+                icon = QIcon(str(icon_path))
+                if not icon.isNull():
+                    self.setWindowIcon(icon)
+            else:
+                theme_icon = QIcon.fromTheme("krdc")
+                if not theme_icon.isNull():
+                    self.setWindowIcon(theme_icon)
+        except Exception:
+            pass
         self.setModal(False)  # Permitir interação com janela principal
         self.resize(800, 600)
         

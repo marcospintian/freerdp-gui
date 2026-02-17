@@ -72,6 +72,7 @@ def main():
     try:
         from PySide6.QtWidgets import QApplication, QMessageBox
         from PySide6.QtCore import QSharedMemory
+        from PySide6.QtGui import QIcon
     except ImportError:
         mensagem = "PySide6 não está instalado.\n\nInstale com:\npip install PySide6"
         mostrar_erro_dialog("Erro de Dependência", mensagem)
@@ -98,6 +99,23 @@ def main():
     app.setApplicationName("FreeRDP-GUI")
     app.setApplicationVersion("2.0.0")
     app.setOrganizationName("FreeRDP-GUI")
+
+    # Definir ícone global da aplicação (usar assets/rdp-icon.png quando disponível)
+    try:
+        # Importante: logger ainda não existe aqui, então usamos prints em caso de falha silenciosa
+        icon_path = PROJECT_ROOT / "assets" / "rdp-icon.png"
+        app_icon = None
+        if icon_path.exists():
+            app_icon = QIcon(str(icon_path))
+            if not app_icon.isNull():
+                app.setWindowIcon(app_icon)
+        else:
+            # tentar ícone do tema do sistema como fallback
+            app_icon = QIcon.fromTheme("krdc")
+            if not app_icon.isNull():
+                app.setWindowIcon(app_icon)
+    except Exception:
+        pass
 
     # Configurar logging
     logger = setup_logging()

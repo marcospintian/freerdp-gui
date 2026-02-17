@@ -19,7 +19,12 @@ except ImportError as e:
 from core.servidores import get_servidor_manager
 from core.settings import get_settings_manager, get_configuracoes_app
 from core.rdp import RDPThread, criar_opcoes_padrao
-from core.utils import SOM_MAP, RESOLUCAO_MAP, QUALIDADE_MAP, notificar_desktop, verificar_comando_disponivel, validar_ip_porta, normalizar_ip_porta
+from core.utils import (
+    SOM_MAP, RESOLUCAO_MAP, QUALIDADE_MAP,
+    notificar_desktop, verificar_comando_disponivel,
+    validar_ip_porta, normalizar_ip_porta,
+    get_project_root, arquivo_existe
+)
 from core.crypto import get_crypto_manager
 
 from .gerenciador import GerenciadorServidoresWidget
@@ -153,6 +158,19 @@ class FreeRDPGUIWindow(QMainWindow):
     def _init_ui(self):
         """Inicializa interface do usuário"""
         self.setWindowTitle("FreeRDP-GUI")
+        # Definir ícone da janela principal a partir de assets com fallback para tema
+        try:
+            icon_path = get_project_root() / "assets" / "rdp-icon.png"
+            if arquivo_existe(str(icon_path)):
+                icon = QIcon(str(icon_path))
+                if not icon.isNull():
+                    self.setWindowIcon(icon)
+            else:
+                theme_icon = QIcon.fromTheme("krdc")
+                if not theme_icon.isNull():
+                    self.setWindowIcon(theme_icon)
+        except Exception:
+            pass
         self.setFixedSize(500, 650)
         
         # Widget central

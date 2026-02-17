@@ -17,6 +17,7 @@ except ImportError as e:
     raise ImportError(f"PySide6 não encontrado: {e}")
 
 from core.crypto import get_crypto_manager
+from core.utils import get_project_root, arquivo_existe
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,19 @@ class MasterPasswordDialog(QDialog):
     def _init_ui(self, title: str, message: str):
         """Inicializa interface"""
         self.setWindowTitle(title)
+        # Definir ícone do dialog a partir de assets com fallback
+        try:
+            icon_path = get_project_root() / "assets" / "rdp-icon.png"
+            if arquivo_existe(str(icon_path)):
+                icon = QIcon(str(icon_path))
+                if not icon.isNull():
+                    self.setWindowIcon(icon)
+            else:
+                theme_icon = QIcon.fromTheme("dialog-password")
+                if not theme_icon.isNull():
+                    self.setWindowIcon(theme_icon)
+        except Exception:
+            pass
         self.setModal(True)
         self.setFixedSize(400, 250 if not self.is_first_time else 350)
         
@@ -232,6 +246,19 @@ class ChangeMasterPasswordDialog(QDialog):
     def _init_ui(self):
         """Inicializa interface"""
         self.setWindowTitle("Alterar Master Password")
+        # Definir ícone do dialog de alteração a partir de assets com fallback
+        try:
+            icon_path = get_project_root() / "assets" / "rdp-icon.png"
+            if arquivo_existe(str(icon_path)):
+                icon = QIcon(str(icon_path))
+                if not icon.isNull():
+                    self.setWindowIcon(icon)
+            else:
+                theme_icon = QIcon.fromTheme("dialog-password")
+                if not theme_icon.isNull():
+                    self.setWindowIcon(theme_icon)
+        except Exception:
+            pass
         self.setModal(True)
         self.setFixedSize(400, 300)
         
