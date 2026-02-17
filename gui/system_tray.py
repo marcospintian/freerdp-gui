@@ -155,6 +155,9 @@ class SystemTrayManager(QObject):
         """Trata ativação do ícone do tray"""
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self.mostrar_janela.emit()
+        elif reason == QSystemTrayIcon.ActivationReason.Trigger:
+            # Clique esquerdo único também mostra a janela
+            self.mostrar_janela.emit()
         elif reason == QSystemTrayIcon.ActivationReason.MiddleClick:
             # Clique do meio mostra logs
             self.mostrar_logs.emit()

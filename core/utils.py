@@ -68,7 +68,23 @@ def get_project_root() -> Path:
 
 def get_ini_path() -> Path:
     """Retorna caminho do arquivo servidores.ini"""
-    return get_project_root() / "servidores.ini"
+    config_dir = Path(os.path.expanduser('~/.config/freerdp-gui'))
+    config_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Se o arquivo não existe no diretório de config mas existe no diretório do programa,
+    # copia o arquivo do programa para o diretório de config
+    config_file = config_dir / "servidores.ini"
+    if not config_file.exists():
+        try:
+            # Tenta copiar do diretório do programa primeiro
+            program_ini = get_project_root() / "servidores.ini"
+            if program_ini.exists():
+                import shutil
+                shutil.copy2(program_ini, config_file)
+        except Exception:
+            pass
+    
+    return config_file
 
 def verificar_comando_disponivel(comando: str) -> bool:
     """Verifica se um comando está disponível no sistema"""

@@ -92,27 +92,22 @@ class FreeRDPGUIWindow(QMainWindow):
         self.conexoes_ativas = max(0, self.conexoes_ativas - 1)
         logger.info(f"Conexões ativas: {self.conexoes_ativas}")
         
-        if self.conexoes_ativas == 0:
-            self.verificar_saida_completa()
+        # Não encerrar automaticamente a aplicação quando todas as conexões terminarem.
+        # Manter a aplicação rodando no tray até ação explícita do usuário.
     
     def verificar_saida_completa(self):
         """Verifica se a aplicação deve sair completamente"""
-        if self.conexoes_ativas == 0 and not self.isVisible():
-            logger.info("Sem conexões ativas e janela oculta - considerando saída")
-            QTimer.singleShot(5000, self.considerar_saida)
+        # Função mantida por compatibilidade, mas não irá forçar saída automática.
+        return
     
     def considerar_saida(self):
         """Considera sair se ainda não há atividade"""
-        if self.conexoes_ativas == 0 and not self.isVisible():
-            logger.info("Decidindo sair da aplicação")
-            self.sair_aplicacao()
+        # Não fará nada; saída deve ser explícita pelo usuário via tray.
+        return
     
     def sair_aplicacao(self):
         """Método para sair completamente da aplicação"""
         logger.info("Saindo da aplicação completamente")
-        
-        if hasattr(self, 'system_tray'):
-            self.system_tray.hide()
         
         self.encerrar_todas_conexoes()
         self._salvar_configuracoes()
@@ -519,6 +514,41 @@ class FreeRDPGUIWindow(QMainWindow):
         display_layout.addRow("Qualidade:", self.combo_qualidade)
         
         parent_layout.addLayout(display_layout)
+        
+        # Segurança
+        seguranca_layout = QFormLayout()
+        
+        self.check_ignorar_cert = QCheckBox("Ignorar certificado SSL/TLS")
+        self.check_ignorar_cert.setChecked(True)
+        self.check_ignorar_cert.setToolTip("Ignora avisos de certificado inválido (/cert:ignore)")
+        seguranca_layout.addRow(self.check_ignorar_cert)
+        
+        # Protocolos de segurança
+        protocolos_label = QLabel("<b>Protocolos de segurança:</b>")
+        seguranca_layout.addRow(protocolos_label)
+        
+        self.check_sec_rdp = QCheckBox("RDP")
+        self.check_sec_rdp.setToolTip("Protocolo RDP nativo")
+        seguranca_layout.addRow("", self.check_sec_rdp)
+        
+        self.check_sec_tls = QCheckBox("TLS")
+        self.check_sec_tls.setChecked(True)
+        self.check_sec_tls.setToolTip("Transport Layer Security")
+        seguranca_layout.addRow("", self.check_sec_tls)
+        
+        self.check_sec_nla = QCheckBox("NLA")
+        self.check_sec_nla.setToolTip("Network Level Authentication")
+        seguranca_layout.addRow("", self.check_sec_nla)
+        
+        self.check_sec_ext = QCheckBox("EXT")
+        self.check_sec_ext.setToolTip("Extended Security")
+        seguranca_layout.addRow("", self.check_sec_ext)
+        
+        self.check_sec_aad = QCheckBox("AAD")
+        self.check_sec_aad.setToolTip("Azure Active Directory")
+        seguranca_layout.addRow("", self.check_sec_aad)
+        
+        parent_layout.addLayout(seguranca_layout)
     
     def _init_aba_servidores(self):
         """Inicializa aba de gerenciamento de servidores"""
@@ -541,7 +571,7 @@ class FreeRDPGUIWindow(QMainWindow):
         button_layout.addWidget(self.btn_conectar)
         
         btn_cancelar = QPushButton("Fechar")
-        btn_cancelar.clicked.connect(self.close)
+        btn_cancelar.clicked.connect(self._ocultar_janela)
         button_layout.addWidget(btn_cancelar)
         
         parent_layout.addLayout(button_layout)
@@ -648,13 +678,29 @@ class FreeRDPGUIWindow(QMainWindow):
                 status = self.crypto_manager.get_status_info()
                 tipo_chave = "personalizada" if status['has_custom_password'] else "padrão"
                 logger.info(f"Senha salva automaticamente para: {servidor_nome} (chave {tipo_chave})")
-                self._notificar("FreeRDP-GUI", f"Senha salva automaticamente para {servidor_nome}")
                 self._atualizar_indicador_senha_salva(True)
         except Exception as e:
             logger.exception("Erro ao salvar senha automaticamente")
     
     def _obter_opcoes_conexao(self) -> Dict:
         """Obtém opções de conexão da interface"""
+        # Montar opções de segurança baseado nos checkboxes
+        protocolos_sec = []
+        if self.check_sec_rdp.isChecked():
+            protocolos_sec.append('rdp')
+        if self.check_sec_tls.isChecked():
+            protocolos_sec.append('tls')
+        if self.check_sec_nla.isChecked():
+            protocolos_sec.append('nla')
+        if self.check_sec_ext.isChecked():
+            protocolos_sec.append('ext')
+        if self.check_sec_aad.isChecked():
+            protocolos_sec.append('aad')
+        
+        sec_value = None
+        if protocolos_sec:
+            sec_value = ';'.join(protocolos_sec)
+        
         return {
             'clipboard': self.check_clipboard.isChecked(),
             'montar_home': self.check_home.isChecked(),
@@ -662,7 +708,9 @@ class FreeRDPGUIWindow(QMainWindow):
             'impressoras': self.check_impressoras.isChecked(),
             'multimonitor': self.check_multimonitor.isChecked(),
             'resolucao': RESOLUCAO_MAP.get(self.combo_resolucao.currentText(), 'auto'),
-            'qualidade': QUALIDADE_MAP.get(self.combo_qualidade.currentText(), 'broadband')
+            'qualidade': QUALIDADE_MAP.get(self.combo_qualidade.currentText(), 'broadband'),
+            'ignorar_cert': self.check_ignorar_cert.isChecked(),
+            'sec': sec_value
         }
     
     def _validar_entrada(self) -> Tuple[bool, str]:
@@ -766,8 +814,6 @@ class FreeRDPGUIWindow(QMainWindow):
         """Inicia conexão RDP com parâmetros fornecidos"""
         logger.info(f"Iniciando conexão RDP para {host} com usuário {usuario}")
         
-        self._notificar("FreeRDP-GUI", f"Conectando a {host}...")
-        
         # Incrementar contador de conexões
         self.incrementar_conexoes()
         
@@ -816,6 +862,19 @@ class FreeRDPGUIWindow(QMainWindow):
     
     def _salvar_configuracoes(self):
         """Salva configurações atuais"""
+        # Extrair protocolos de segurança selecionados
+        sec_protocols = []
+        if self.check_sec_rdp.isChecked():
+            sec_protocols.append('rdp')
+        if self.check_sec_tls.isChecked():
+            sec_protocols.append('tls')
+        if self.check_sec_nla.isChecked():
+            sec_protocols.append('nla')
+        if self.check_sec_ext.isChecked():
+            sec_protocols.append('ext')
+        if self.check_sec_aad.isChecked():
+            sec_protocols.append('aad')
+        
         config = {
             'servidor': self.combo_servidor.currentText(),
             'usuario': self.edit_usuario.text(),
@@ -827,6 +886,8 @@ class FreeRDPGUIWindow(QMainWindow):
             'resolucao': self.combo_resolucao.currentText(),
             'qualidade': self.combo_qualidade.currentText(),
             'salvar_senha': self.check_salvar_senha.isChecked(),
+            'ignorar_cert': self.check_ignorar_cert.isChecked(),
+            'sec_protocols': sec_protocols,
         }
         
         self.settings_manager.salvar_configuracao_interface(config)
@@ -848,6 +909,15 @@ class FreeRDPGUIWindow(QMainWindow):
         self.check_impressoras.setChecked(config.get('impressoras', False))
         self.check_multimonitor.setChecked(config.get('multimonitor', False))
         self.check_salvar_senha.setChecked(config.get('salvar_senha', True))  # Padrão True agora
+        self.check_ignorar_cert.setChecked(config.get('ignorar_cert', True))
+        
+        # Restaurar protocolos de segurança
+        sec_protocols = config.get('sec_protocols', ['tls'])
+        self.check_sec_rdp.setChecked('rdp' in sec_protocols)
+        self.check_sec_tls.setChecked('tls' in sec_protocols)
+        self.check_sec_nla.setChecked('nla' in sec_protocols)
+        self.check_sec_ext.setChecked('ext' in sec_protocols)
+        self.check_sec_aad.setChecked('aad' in sec_protocols)
         
         # Combos
         if config.get('som'):
@@ -898,7 +968,6 @@ class FreeRDPGUIWindow(QMainWindow):
         # Se tiver system tray, minimizar
         if hasattr(self, 'system_tray') and self.system_tray.is_available():
             self.hide()
-            self._notificar("FreeRDP-GUI", "Aplicativo minimizado para a bandeja")
             event.ignore()
             self.verificar_saida_completa()
         else:
@@ -919,6 +988,11 @@ class FreeRDPGUIWindow(QMainWindow):
         self.show()
         self.raise_()
         self.activateWindow()
+
+    def _ocultar_janela(self):
+        """Oculta a janela (minimiza para tray sem sair)"""
+        logger.info("Ocultando janela para system tray")
+        self.hide()
 
     def close(self):
         """Sair da aplicação explicitamente"""

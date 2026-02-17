@@ -10,32 +10,43 @@ import signal
 from pathlib import Path
 import subprocess
 
-try:
-    from PySide6.QtWidgets import QApplication, QMessageBox
-    from PySide6.QtCore import QSharedMemory
-except ImportError:
-    print("Erro: PySide6 não está instalado.")
-    print("Instale com: pip install PySide6")
-    sys.exit(1)
-
-# Verificar dependência de criptografia
-try:
-    from cryptography.fernet import Fernet
-except ImportError:
-    print("Erro: Biblioteca 'cryptography' não está instalada.")
-    print("Instale com: pip install cryptography")
-    sys.exit(1)
-
 # Adicionar diretório do projeto ao path
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from core.utils import setup_logging, verificar_comando_disponivel
-from gui.main_window import FreeRDPGUIWindow
-
 # Variáveis globais
 shared_memory = None
 logger = None
+
+def mostrar_erro_dialog(titulo, mensagem):
+    """
+    Tenta mostrar erro em caixa de diálogo gráfica.
+    Se falhar, mostra no terminal.
+    """
+    try:
+        # Tentar zenity (GNOME/general Linux)
+        subprocess.run([
+            "zenity",
+            "--error",
+            f"--title={titulo}",
+            f"--text={mensagem}",
+            "--no-wrap"
+        ], timeout=10, check=False, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        try:
+            # Tentar kdialog (KDE)
+            subprocess.run([
+                "kdialog",
+                "--error",
+                mensagem,
+                f"--title={titulo}"
+            ], timeout=10, check=False, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            # Fallback para terminal
+            print(f"\n❌ {titulo}")
+            print("-" * 50)
+            print(mensagem)
+            print("-" * 50)
 
 def cleanup_shared_memory():
     """Limpa a memória compartilhada na saída"""
@@ -53,37 +64,33 @@ def signal_handler(signum, frame):
     cleanup_shared_memory()
     sys.exit(0)
 
-def verificar_dependencias():
-    """Verifica dependências críticas"""
-    dependencias_faltando = []
-    
-    # Verificar xfreerdp
-    if not verificar_comando_disponivel("xfreerdp3"):
-        dependencias_faltando.append("xfreerdp (instale: sudo apt install freerdp3-x11)")
-    
-    if dependencias_faltando:
-        erro = "Dependências faltando:\n\n" + "\n".join([f"• {dep}" for dep in dependencias_faltando])
-        erro += "\n\nInstale as dependências e tente novamente."
-        
-        # Tentar notificação desktop
-        try:
-            if verificar_comando_disponivel("notify-send"):
-                subprocess.run([
-                    "notify-send", 
-                    "-i", "error",
-                    "FreeRDP-GUI - Dependências", 
-                    "Dependências faltando. Veja o terminal."
-                ], timeout=5)
-        except Exception:
-            pass  # Ignorar erro de notificação
-        
-        return False, erro
-    
-    return True, ""
-
 def main():
     """Função principal da aplicação"""
     global shared_memory, logger
+    
+    # Verificar dependências críticas de importação
+    try:
+        from PySide6.QtWidgets import QApplication, QMessageBox
+        from PySide6.QtCore import QSharedMemory
+    except ImportError:
+        mensagem = "PySide6 não está instalado.\n\nInstale com:\npip install PySide6"
+        mostrar_erro_dialog("Erro de Dependência", mensagem)
+        return 1
+    
+    try:
+        from cryptography.fernet import Fernet
+    except ImportError:
+        mensagem = "Biblioteca 'cryptography' não está instalada.\n\nInstale com:\npip install cryptography"
+        mostrar_erro_dialog("Erro de Dependência", mensagem)
+        return 1
+    
+    try:
+        from core.utils import setup_logging, verificar_comando_disponivel
+        from gui.main_window import FreeRDPGUIWindow
+    except ImportError as e:
+        mensagem = f"Erro ao importar módulos do projeto:\n\n{e}"
+        mostrar_erro_dialog("Erro de Importação", mensagem)
+        return 1
 
     # Criar a aplicação Qt primeiro
     app = QApplication(sys.argv)
@@ -99,6 +106,35 @@ def main():
     # Ativar handler para sinais do sistema
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+
+    # Definir função de verificar dependências (precisa estar após importações)
+    def verificar_dependencias():
+        """Verifica dependências críticas"""
+        dependencias_faltando = []
+        
+        # Verificar xfreerdp
+        if not verificar_comando_disponivel("xfreerdp3"):
+            dependencias_faltando.append("xfreerdp (instale: sudo apt install freerdp3-x11)")
+        
+        if dependencias_faltando:
+            erro = "Dependências faltando:\n\n" + "\n".join([f"• {dep}" for dep in dependencias_faltando])
+            erro += "\n\nInstale as dependências e tente novamente."
+            
+            # Tentar notificação desktop
+            try:
+                if verificar_comando_disponivel("notify-send"):
+                    subprocess.run([
+                        "notify-send", 
+                        "-i", "error",
+                        "FreeRDP-GUI - Dependências", 
+                        "Dependências faltando. Veja o terminal."
+                    ], timeout=5)
+            except Exception:
+                pass  # Ignorar erro de notificação
+            
+            return False, erro
+        
+        return True, ""
 
     # Verificar dependências críticas
     deps_ok, deps_erro = verificar_dependencias()
@@ -212,11 +248,6 @@ def main():
 
 if __name__ == "__main__":
     try:
-        exit_code = main()
-        sys.exit(exit_code)
+        main()
     except KeyboardInterrupt:
         print("\nAplicação interrompida pelo usuário")
-        sys.exit(0)
-    except Exception as e:
-        print(f"Erro fatal: {e}")
-        sys.exit(1)

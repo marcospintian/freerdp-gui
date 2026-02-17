@@ -58,13 +58,38 @@ class RDPThread(QThread):
             resultado = subprocess.run(cmd, capture_output=True, text=True)
             
             if resultado.returncode != 0:
-                error_msg = resultado.stderr.strip() if resultado.stderr else "Código de erro desconhecido"
-                raise RDPConnectionError(f"Conexão RDP falhou (código {resultado.returncode}): {error_msg}")
+                stderr = resultado.stderr.strip() if resultado.stderr else ""
+                
+                # Mensagens que indicam encerramento NORMAL (não erro real)
+                mensagens_normais = [
+                    "LOGOFF_BY_USER",           # Usuário fez logoff
+                    "STATE_RUN_QUIT_SESSION",   # Sessão encerrada normalmente
+                    "CONNECTION_STATE_",        # Diferentes estados de desconexão normal
+                ]
+                
+                # Se há [ERROR] e não é um dos encerramento normais, é erro real
+                if "[ERROR]" in stderr:
+                    # Verificar se é um erro normal
+                    eh_normal = any(msg in stderr for msg in mensagens_normais)
+                    
+                    if eh_normal:
+                        # Encerramento normal, não é erro do usuário
+                        logger.info(f"Conexão RDP encerrada normalmente (logoff/desconexão)")
+                    else:
+                        # É um erro real
+                        error_lines = [line for line in stderr.split('\n') if "[ERROR]" in line]
+                        error_msg = " ".join(error_lines[:2]) if error_lines else stderr  # Limitar a 2 linhas
+                        raise RDPConnectionError(f"Conexão RDP falhou: {error_msg}")
+                else:
+                    # Apenas warnings ou sem mensagens = encerramento normal
+                    logger.info(f"Conexão RDP encerrada normalmente (código {resultado.returncode})")
                 
         except subprocess.TimeoutExpired:
             raise RDPConnectionError("Timeout na conexão RDP")
         except FileNotFoundError:
             raise RDPConnectionError("xfreerdp não encontrado. Instale o pacote freerdp.")
+        except RDPConnectionError:
+            raise  # Re-raise RDPConnectionError
         except Exception as e:
             raise RDPConnectionError(f"Erro ao executar xfreerdp: {str(e)}")
     
@@ -75,11 +100,19 @@ class RDPThread(QThread):
             f"/u:{self.usuario}",
             f"/p:{self.senha}",
             f"/v:{self.host}",
-            "/cert:ignore",
             "/dynamic-resolution",
             "/compression",
             "/auto-reconnect"
         ]
+        
+        # Certificado SSL/TLS
+        if self.opcoes.get('ignorar_cert', True):
+            cmd.append("/cert:ignore")
+        
+        # Opções de segurança
+        sec_options = self.opcoes.get('sec', None)
+        if sec_options:
+            cmd.append(f"/sec:{sec_options}")
         
         # Opções básicas
         if self.opcoes.get('clipboard', False):
@@ -135,5 +168,7 @@ def criar_opcoes_padrao() -> Dict:
         'impressoras': False,
         'multimonitor': False,
         'resolucao': 'auto',
-        'qualidade': 'broadband'
+        'qualidade': 'broadband',
+        'ignorar_cert': True,
+        'sec': None  # Exemplos: 'rdp', 'tls', 'nla', 'rdp:on;tls:off', etc
     }
