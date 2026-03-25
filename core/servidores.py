@@ -25,17 +25,19 @@ class ServidorManager:
         """Cria arquivo INI de exemplo se não existir"""
         if not self.ini_path.exists():
             self.config['Servidor1'] = {
-                'ip': '192.168.1.100',  # Porta padrão será adicionada automaticamente
-                'usuario': 'administrador'
-                # Nota: senhas serão criptografadas quando salvas via interface
+                'ip': '192.168.1.100',
+                'usuario': 'administrador',
+                'sec': ''
             }
             self.config['Servidor2'] = {
-                'ip': '10.0.0.50:3389',  # Com porta específica
-                'usuario': 'user'
+                'ip': '10.0.0.50:3389',
+                'usuario': 'user',
+                'sec': ''
             }
             self.config['ServidorEmpresa'] = {
-                'ip': 'rdp.empresa.com',  # Hostname sem porta
-                'usuario': 'funcionario'
+                'ip': 'rdp.empresa.com',
+                'usuario': 'funcionario',
+                'sec': ''
             }
             
             try:
@@ -74,7 +76,7 @@ class ServidorManager:
         
         return servidores
     
-    def salvar_servidor(self, nome: str, ip: str, usuario: str, senha: str = None) -> bool:
+    def salvar_servidor(self, nome: str, ip: str, usuario: str, senha: str = None, sec: str = None) -> bool:
         """
         Salva servidor no arquivo INI
         
@@ -83,6 +85,7 @@ class ServidorManager:
             ip: Endereço IP ou hostname (porta opcional)
             usuario: Nome do usuário
             senha: Senha em texto claro (será criptografada automaticamente)
+            sec: Protocolo(s) de segurança (ex: 'tls', 'nla', 'rdp')
             
         Returns:
             True se salvou com sucesso
@@ -102,8 +105,9 @@ class ServidorManager:
         try:
             # Criar seção do servidor
             self.config[nome] = {
-                "ip": ip_normalizado, 
-                "usuario": usuario
+                "ip": ip_normalizado,
+                "usuario": usuario,
+                "sec": sec or ""
             }
             
             # Criptografar e salvar senha se fornecida
@@ -290,7 +294,7 @@ class ServidorManager:
             logger.error(f"Erro ao remover servidor '{nome}': {str(e)}")
             return False
     
-    def obter_servidor(self, nome: str) -> Optional[Tuple[str, str]]:
+    def obter_servidor(self, nome: str) -> Optional[Tuple[str, str, str]]:
         """
         Obtém dados de um servidor específico
         
@@ -298,7 +302,7 @@ class ServidorManager:
             nome: Nome do servidor
             
         Returns:
-            Tupla (ip, usuario) ou None se não encontrado
+            Tupla (ip, usuario, sec) ou None se não encontrado
         """
         try:
             self.config.read(self.ini_path, encoding='utf-8')
@@ -306,32 +310,33 @@ class ServidorManager:
             if nome in self.config:
                 ip = self.config[nome].get("ip", "")
                 usuario = self.config[nome].get("usuario", "")
-                return (ip, usuario)
+                sec = self.config[nome].get("sec", "")
+                return (ip, usuario, sec)
                 
         except Exception as e:
             logger.error(f"Erro ao obter servidor '{nome}': {str(e)}")
         
         return None
     
-    def obter_servidor_completo(self, nome: str) -> Optional[Tuple[str, str, str]]:
+    def obter_servidor_completo(self, nome: str) -> Optional[Tuple[str, str, str, str]]:
         """
-        Obtém dados completos de um servidor (incluindo senha)
+        Obtém dados completos de um servidor (incluindo senha e sec)
         
         Args:
             nome: Nome do servidor
             
         Returns:
-            Tupla (ip, usuario, senha) ou None se não encontrado
+            Tupla (ip, usuario, senha, sec) ou None se não encontrado
             Senha será None se não estiver salva ou crypto não estiver desbloqueado
         """
         dados_basicos = self.obter_servidor(nome)
         if not dados_basicos:
             return None
         
-        ip, usuario = dados_basicos
+        ip, usuario, sec = dados_basicos
         senha = self.obter_senha(nome)
         
-        return (ip, usuario, senha)
+        return (ip, usuario, senha, sec)
     
     def listar_servidores(self) -> list:
         """
@@ -365,7 +370,7 @@ class ServidorManager:
     
     def renomear_servidor(self, nome_atual: str, nome_novo: str) -> bool:
         """
-        Renomeia um servidor (preservando senha criptografada)
+        Renomeia um servidor (preservando senha criptografada e sec)
         
         Args:
             nome_atual: Nome atual do servidor
@@ -388,7 +393,7 @@ class ServidorManager:
             if not dados_completos:
                 return False
             
-            ip, usuario, senha_descriptografada = dados_completos
+            ip, usuario, senha_descriptografada, sec = dados_completos
             
             # Obter senha criptografada (se existir)
             senha_encrypted = None
@@ -397,13 +402,13 @@ class ServidorManager:
             
             # Criar nova seção
             self.config[nome_novo] = {
-                "ip": ip, 
-                "usuario": usuario
+                "ip": ip,
+                "usuario": usuario,
+                "sec": sec or ""
             }
             
             # Se tinha senha criptografada, re-criptografar com novo contexto
             if senha_descriptografada and self.crypto_manager.is_unlocked():
-                # Re-criptografar com novo nome (para validação de contexto)
                 nova_senha_encrypted = self.crypto_manager.encrypt_password(
                     senha_descriptografada, nome_novo
                 )
@@ -412,8 +417,6 @@ class ServidorManager:
                 else:
                     logger.warning(f"Erro ao re-criptografar senha para '{nome_novo}'")
             elif senha_encrypted:
-                # Se não conseguiu descriptografar mas tem senha, manter como estava
-                # (usuário vai precisar reconfigurar a senha depois)
                 logger.warning(f"Senha de '{nome_atual}' não pôde ser migrada para '{nome_novo}' - crypto não desbloqueado")
             
             # Remover seção antiga
