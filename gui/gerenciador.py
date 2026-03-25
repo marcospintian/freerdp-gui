@@ -8,7 +8,7 @@ from typing import Optional
 try:
     from PySide6.QtWidgets import (
         QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
-        QLabel, QLineEdit, QPushButton, QListWidget, QMessageBox
+        QLabel, QLineEdit, QPushButton, QListWidget, QMessageBox, QComboBox
     )
     from PySide6.QtCore import Signal, Qt
 except ImportError as e:
@@ -19,6 +19,17 @@ from core.utils import validar_ip_porta
 from core.crypto import get_crypto_manager
 
 logger = logging.getLogger(__name__)
+
+SEC_OPCOES = [
+    ("(padrão)", ""),
+    ("TLS", "tls"),
+    ("RDP", "rdp"),
+    ("NLA", "nla"),
+    ("EXT", "ext"),
+    ("AAD", "aad"),
+    ("TLS + NLA", "tls;nla"),
+    ("RDP + TLS", "rdp;tls"),
+]
 
 class GerenciadorServidoresWidget(QWidget):
     """Widget integrado para gerenciar servidores"""
@@ -90,6 +101,21 @@ class GerenciadorServidoresWidget(QWidget):
         senha_widget.setLayout(senha_layout)
         form_layout.addRow("Senha:", senha_widget)
         
+        # Segurança por servidor
+        self.combo_sec = QComboBox()
+        self.combo_sec.setToolTip(
+            "Protocolo de segurança para este servidor.\n"
+            "(padrão) = usa as opções globais da aba Opções\n"
+            "TLS = Transport Layer Security\n"
+            "RDP = Protocolo RDP nativo\n"
+            "NLA = Network Level Authentication\n"
+            "EXT = Extended Security\n"
+            "AAD = Azure Active Directory"
+        )
+        for label, _ in SEC_OPCOES:
+            self.combo_sec.addItem(label)
+        form_layout.addRow("Segurança:", self.combo_sec)
+        
         parent_layout.addLayout(form_layout)
     
     def _init_botoes_acao(self, parent_layout):
@@ -120,13 +146,12 @@ class GerenciadorServidoresWidget(QWidget):
     
     def _definir_modo_leitura(self):
         """Configura interface para modo somente leitura"""
-        # Desabilitar campos
         self.input_nome.setEnabled(False)
         self.input_ip.setEnabled(False)
         self.input_usuario.setEnabled(False)
         self.input_senha.setEnabled(False)
+        self.combo_sec.setEnabled(False)
         
-        # Configurar botões
         self.btn_salvar.setEnabled(False)
         self.btn_cancelar.setEnabled(False)
         self.btn_novo.setEnabled(True)
@@ -137,13 +162,12 @@ class GerenciadorServidoresWidget(QWidget):
     
     def _definir_modo_edicao(self):
         """Configura interface para modo de edição"""
-        # Habilitar campos
         self.input_nome.setEnabled(True)
         self.input_ip.setEnabled(True)
         self.input_usuario.setEnabled(True)
         self.input_senha.setEnabled(True)
+        self.combo_sec.setEnabled(True)
         
-        # Configurar botões
         self.btn_salvar.setEnabled(True)
         self.btn_cancelar.setEnabled(True)
         self.btn_novo.setEnabled(False)
@@ -167,6 +191,20 @@ class GerenciadorServidoresWidget(QWidget):
             logger.error(f"Erro ao recarregar servidores: {str(e)}")
             QMessageBox.warning(self, "Erro", f"Erro ao carregar servidores: {str(e)}")
     
+    def _sec_valor_para_indice(self, sec_valor: str) -> int:
+        """Retorna o índice no combo_sec correspondente ao valor sec salvo"""
+        for i, (_, valor) in enumerate(SEC_OPCOES):
+            if valor == sec_valor:
+                return i
+        return 0  # (padrão)
+    
+    def _sec_indice_para_valor(self) -> str:
+        """Retorna o valor sec correspondente ao índice selecionado no combo"""
+        idx = self.combo_sec.currentIndex()
+        if 0 <= idx < len(SEC_OPCOES):
+            return SEC_OPCOES[idx][1]
+        return ""
+    
     def _carregar_detalhes(self, nome: str):
         """Carrega detalhes do servidor selecionado"""
         if not nome:
@@ -176,11 +214,12 @@ class GerenciadorServidoresWidget(QWidget):
         try:
             dados = self.servidor_manager.obter_servidor(nome)
             if dados:
-                ip, usuario = dados
+                ip, usuario, sec = dados
                 
                 self.input_nome.setText(nome)
                 self.input_ip.setText(ip)
                 self.input_usuario.setText(usuario)
+                self.combo_sec.setCurrentIndex(self._sec_valor_para_indice(sec))
                 
                 # Tentar carregar senha criptografada
                 senha = self._obter_senha_criptografada(nome)
@@ -201,13 +240,11 @@ class GerenciadorServidoresWidget(QWidget):
         """Obtém senha criptografada para o servidor"""
         status = self.crypto_manager.get_status_info()
         
-        # Se tem master password personalizada mas está trancada
         if status['has_custom_password'] and not self.crypto_manager.is_unlocked():
             if self.servidor_manager.servidor_tem_senha_salva(nome):
                 return "[SENHA TRANCADA - Configure master password]"
             return None
         
-        # Sistema sempre funciona (chave padrão ou personalizada destrancada)
         try:
             senha = self.servidor_manager.obter_senha(nome)
             if senha:
@@ -242,6 +279,7 @@ class GerenciadorServidoresWidget(QWidget):
         self.input_ip.clear()
         self.input_usuario.clear()
         self.input_senha.clear()
+        self.combo_sec.setCurrentIndex(0)
         self._atualizar_indicador_senha_salva(False)
     
     def _novo_servidor(self):
@@ -265,7 +303,6 @@ class GerenciadorServidoresWidget(QWidget):
         self.nome_sendo_editado = item_atual.text()
         self._definir_modo_edicao()
         
-        # Se senha está trancada, limpar campo para que usuário digite nova
         if self.input_senha.text().startswith("[SENHA TRANCADA"):
             self.input_senha.clear()
         
@@ -274,22 +311,21 @@ class GerenciadorServidoresWidget(QWidget):
     
     def _salvar_servidor(self):
         """Salva servidor (novo ou editado)"""
-        # Validar dados
         nome = self.input_nome.text().strip()
         ip = self.input_ip.text().strip()
         usuario = self.input_usuario.text().strip()
         senha = self.input_senha.text()
+        sec = self._sec_indice_para_valor()
         
         if not self._validar_dados(nome, ip, usuario):
             return
         
         try:
-            # Verificar se é edição ou criação
             if self.nome_sendo_editado:
-                success = self._salvar_edicao(nome, ip, usuario, senha)
+                success = self._salvar_edicao(nome, ip, usuario, senha, sec)
                 acao = "editado"
             else:
-                success = self._salvar_novo(nome, ip, usuario, senha)
+                success = self._salvar_novo(nome, ip, usuario, senha, sec)
                 acao = "criado"
             
             if success:
@@ -317,7 +353,7 @@ class GerenciadorServidoresWidget(QWidget):
         
         return True
     
-    def _salvar_novo(self, nome: str, ip: str, usuario: str, senha: str) -> bool:
+    def _salvar_novo(self, nome: str, ip: str, usuario: str, senha: str, sec: str) -> bool:
         """Salva novo servidor"""
         if self.servidor_manager.servidor_existe(nome):
             resposta = QMessageBox.question(
@@ -328,12 +364,10 @@ class GerenciadorServidoresWidget(QWidget):
             if resposta != QMessageBox.StandardButton.Yes:
                 return False
         
-        # Salvar servidor básico
-        if not self.servidor_manager.salvar_servidor(nome, ip, usuario):
+        if not self.servidor_manager.salvar_servidor(nome, ip, usuario, sec=sec):
             QMessageBox.critical(self, "Erro", "Erro ao salvar servidor no arquivo INI")
             return False
         
-        # Salvar senha criptografada se fornecida (sistema sempre pode salvar)
         if senha and not senha.startswith("[SENHA TRANCADA"):
             if not self.servidor_manager.salvar_senha(nome, senha):
                 status = self.crypto_manager.get_status_info()
@@ -347,25 +381,21 @@ class GerenciadorServidoresWidget(QWidget):
         
         return True
     
-    def _salvar_edicao(self, nome: str, ip: str, usuario: str, senha: str) -> bool:
+    def _salvar_edicao(self, nome: str, ip: str, usuario: str, senha: str, sec: str) -> bool:
         """Salva edição de servidor existente"""
-        # Se nome mudou, verificar se novo nome já existe
         if self.nome_sendo_editado != nome and self.servidor_manager.servidor_existe(nome):
             QMessageBox.warning(self, "Erro", f"Já existe um servidor com o nome '{nome}'.")
             return False
         
-        # Se nome mudou, renomear servidor
         if self.nome_sendo_editado != nome:
             if not self.servidor_manager.renomear_servidor(self.nome_sendo_editado, nome):
                 QMessageBox.critical(self, "Erro", "Erro ao renomear servidor")
                 return False
         
-        # Atualizar dados do servidor
-        if not self.servidor_manager.salvar_servidor(nome, ip, usuario):
+        if not self.servidor_manager.salvar_servidor(nome, ip, usuario, sec=sec):
             QMessageBox.critical(self, "Erro", "Erro ao salvar servidor")
             return False
         
-        # Atualizar senha se fornecida e não está trancada
         if senha and not senha.startswith("[SENHA TRANCADA"):
             if not self.servidor_manager.salvar_senha(nome, senha):
                 status = self.crypto_manager.get_status_info()
@@ -378,22 +408,17 @@ class GerenciadorServidoresWidget(QWidget):
     
     def _finalizar_salvamento(self, nome: str, acao: str):
         """Finaliza processo de salvamento"""
-        # Recarregar lista
         self._recarregar_servidores()
         
-        # Selecionar servidor salvo
         items = self.lista.findItems(nome, Qt.MatchFlag.MatchExactly)
         if items:
             self.lista.setCurrentItem(items[0])
         
-        # Voltar ao modo leitura
         self.nome_sendo_editado = None
         self._definir_modo_leitura()
         
-        # Notificar atualização
         self.servidores_atualizados.emit()
         
-        # Mostrar sucesso
         status = self.crypto_manager.get_status_info()
         tipo_criptografia = "personalizada" if status['has_custom_password'] else "padrão"
         
@@ -407,7 +432,6 @@ class GerenciadorServidoresWidget(QWidget):
         self.nome_sendo_editado = None
         self._definir_modo_leitura()
         
-        # Recarregar detalhes do item selecionado
         item_atual = self.lista.currentItem()
         if item_atual:
             self._carregar_detalhes(item_atual.text())
@@ -425,7 +449,6 @@ class GerenciadorServidoresWidget(QWidget):
         
         nome = item_atual.text()
         
-        # Confirmar remoção
         resposta = QMessageBox.question(
             self, "Confirmar",
             f"❓ <b>Remover servidor '{nome}'?</b><br/><br/>"
@@ -440,16 +463,13 @@ class GerenciadorServidoresWidget(QWidget):
             return
         
         try:
-            # Remover servidor (incluindo senha criptografada)
             if not self.servidor_manager.remover_servidor(nome):
                 QMessageBox.critical(self, "Erro", "Erro ao remover servidor do arquivo")
                 return
             
-            # Atualizar interface
             self._recarregar_servidores()
             self._limpar_campos()
             
-            # Notificar atualização
             self.servidores_atualizados.emit()
             
             QMessageBox.information(self, "Sucesso", f"✅ Servidor '{nome}' removido com sucesso!")
