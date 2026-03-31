@@ -6,7 +6,6 @@ PyInstaller.__main__.run([
     '--onefile',
     '--windowed',
     '--add-data=assets:assets',
-    '--add-data=servidores.ini:.',
     '--icon=assets/icon.png',
     '--hidden-import=PySide6.QtCore',
     '--hidden-import=PySide6.QtGui',
