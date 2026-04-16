@@ -3,6 +3,7 @@ Janela principal da aplicação FreeRDP-GUI com master password opcional
 """
 
 import logging
+import subprocess
 from typing import Dict, Tuple, Optional
 
 try:
@@ -724,11 +725,27 @@ class FreeRDPGUIWindow(QMainWindow):
     
     def _conectar(self):
         """Inicia conexão RDP"""
-        if not verificar_comando_disponivel("xfreerdp3"):
+        freerdp_ok = verificar_comando_disponivel("xfreerdp3")
+        if not freerdp_ok:
+            freerdp_ok = verificar_comando_disponivel("xfreerdp")
+        if not freerdp_ok:
+            freerdp_ok = verificar_comando_disponivel("freerdp")
+        if not freerdp_ok:
+            try:
+                result = subprocess.run(
+                    ["flatpak", "run", "com.freerdp.FreeRDP", "/help"],
+                    capture_output=True, timeout=5
+                )
+                if result.returncode != 127:
+                    freerdp_ok = True
+            except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+                freerdp_ok = False
+
+        if not freerdp_ok:
             QMessageBox.critical(self, "Dependências", 
-                               "xfreerdp não encontrado. Instale o pacote freerdp.")
+                               "FreeRDP não encontrado. Instale o pacote freerdp ou o Flathub com.freerdp.FreeRDP.")
             return
-        
+
         valido, erro = self._validar_entrada()
         if not valido:
             QMessageBox.warning(self, "Erro de Validação", erro)
@@ -796,7 +813,6 @@ class FreeRDPGUIWindow(QMainWindow):
         self.btn_conectar.setText("Conectar")
         
         if sucesso:
-            self._notificar("FreeRDP-GUI", mensagem)
             logger.info(mensagem)
         else:
             self._notificar("FreeRDP-GUI", f"Erro: {mensagem}", "error")

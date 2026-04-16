@@ -1,40 +1,50 @@
-# FreeRDP-GUI v2.0 🚀
+# FreeRDP-GUI v2.1.0 🚀
 
-Interface gráfica moderna e intuitiva para conexões RDP usando FreeRDP. Agora com **sistema híbrido de criptografia de senhas** e preparado para distribuição via Flatpak, AppImage, DEB e RPM.
+Interface gráfica moderna e intuitiva para conexões RDP usando FreeRDP. **Pronto para beta testing!** Suporte completo ao FreeRDP do Flathub, instância única inteligente e notificações otimizadas.
 
-## ✨ Novidades da v2.0
+[![Status](https://img.shields.io/badge/Status-Beta%20Ready-brightgreen.svg)](https://github.com/SEU_USERNAME/freerdp-gui/releases)
+[![Version](https://img.shields.io/badge/Version-2.1.0-blue.svg)](https://github.com/SEU_USERNAME/freerdp-gui)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-- 🔐 **Sistema híbrido de criptografia** - Funciona com chave padrão automática ou master password personalizada
-- 🏷️ **Novo nome**: FreeRDP-GUI (mais descritivo)
-- 🛡️ **Master password opcional** para controle total sobre as senhas
-- 💾 **Portabilidade total** - um arquivo INI com tudo
-- 🔒 **Instância Única**: Prevenção de múltiplas instâncias executando simultaneamente
-- 🎯 **Controle Inteligente de Conexões**: Sistema avançado de gerenciamento de conexões ativas
-- 🔧 **Sistema de Limpeza Automática**: Gerenciamento seguro de threads e recursos
-- 🌟 **System Tray Inteligente**: Comportamento aprimorado para minimização e restauração
-- 📱 **Notificações Desktop**: Integração com sistema de notificações do Linux
-- ⚡ **Conexões Rápidas**: Conectar diretamente pelo system tray com senhas salvas
-- 📊 **Logging Avançado**: Sistema de logs com rotação automática e visualizador integrado
-- 🔄 **Auto-salvamento**: Configurações salvas automaticamente a cada conexão
-- 📈 **Histórico de Conexões**: Rastreamento das últimas conexões realizadas
+## ✨ Novidades da v2.1
+
+- 🏗️ **Suporte Completo ao FreeRDP do Flathub** - Detecção automática e uso prioritário do `com.freerdp.FreeRDP`
+- 🔄 **Instância Única Inteligente** - Em vez de bloquear, ativa a janela já em execução
+- 🔕 **Notificações Otimizadas** - Menos ruído, foco em erros importantes
+- 🛠️ **Tratamento Melhorado de Desconexões** - FreeRDP 3.x não reporta mais fechamentos normais como erro
+- ⚡ **Performance Aprimorada** - Menos overhead de notificações e melhor gerenciamento de instâncias
 
 ## 🔧 Instalação
 
 ### Dependências do Sistema
 
-**Ubuntu/Debian:**
+#### Opção 1: FreeRDP do Flathub (Recomendado) 🏆
 ```bash
-sudo apt install freerdp2-x11 libnotify-bin python3-pip
+# Instalar Flatpak (se não tiver)
+sudo apt install flatpak  # Ubuntu/Debian
+sudo dnf install flatpak  # Fedora
+sudo pacman -S flatpak    # Arch Linux
+
+# Adicionar Flathub
+flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+# Instalar FreeRDP do Flathub
+flatpak install flathub com.freerdp.FreeRDP
+
+# Instalar notificações (opcional)
+sudo apt install libnotify-bin  # Ubuntu/Debian
 ```
 
-**Fedora:**
+#### Opção 2: FreeRDP do Sistema
 ```bash
-sudo dnf install freerdp libnotify python3-pip
-```
+# Ubuntu/Debian
+sudo apt install freerdp3-x11 libnotify-bin
 
-**Arch Linux:**
-```bash
-sudo pacman -S freerdp libnotify python-pip
+# Fedora
+sudo dnf install freerdp libnotify
+
+# Arch Linux
+sudo pacman -S freerdp libnotify
 ```
 
 ### Dependências Python
@@ -47,6 +57,64 @@ pip install -r requirements.txt
 
 ```bash
 python main.py
+```
+
+## 📦 Empacotamento para Distribuição
+
+O FreeRDP-GUI oferece opções de empacotamento para facilitar a distribuição:
+
+### Opção 1: AppImage (Recomendado) 🏆
+
+**Vantagens:**
+- ✅ Executável independente (não requer instalação)
+- ✅ Funciona em qualquer distribuição Linux
+- ✅ Tamanho compacto (~70MB)
+- ✅ Fácil de compartilhar
+
+```bash
+# 1. Instalar dependências de build
+pip install pyinstaller
+
+# 2. Fazer build do executável
+python3 build.py
+
+# 3. Criar AppImage
+./package.sh
+# Escolher opção 1 (AppImage)
+```
+
+**Resultado:** `FreeRDP-GUI-x86_64.AppImage`
+
+### Opção 2: Pacote .deb
+
+**Vantagens:**
+- ✅ Integração nativa com Ubuntu/Debian
+- ✅ Gerenciamento via apt/dpkg
+- ✅ Atualizações automáticas possíveis
+
+```bash
+# Mesmo processo do AppImage, mas escolher opção 2
+./package.sh
+# Escolher opção 2 (.deb)
+```
+
+**Resultado:** `freerdp-gui_2.1.0_amd64.deb`
+
+### Processo Completo
+
+```bash
+# Clonar repositório
+git clone https://github.com/SEU_USERNAME/freerdp-gui.git
+cd freerdp-gui
+
+# Instalar dependências
+pip install -r requirements.txt
+pip install pyinstaller
+
+# Build e empacotamento
+python3 build.py
+./package.sh  # Escolher formato desejado
+
 ```
 
 ## 🔐 Sistema de Senhas
@@ -179,9 +247,55 @@ senha_encrypted = eyJ2ZXJzaW9uIjoxLCJkYXRhIjoi...
 - 📊 **Contador de conexões**: Controle de conexões ativas
 - 🚪 **Saída inteligente**: Aguarda conexões terminarem antes de sair
 
+## 🔧 Suporte ao FreeRDP do Flathub
+
+O FreeRDP-GUI detecta automaticamente e prioriza o uso do FreeRDP instalado via Flathub quando disponível, oferecendo a versão mais atualizada do FreeRDP sem conflitos com o sistema.
+
+### Instalação do FreeRDP via Flathub
+```bash
+# Instalar Flatpak (se não tiver)
+sudo apt install flatpak  # Ubuntu/Debian
+sudo dnf install flatpak  # Fedora
+sudo pacman -S flatpak    # Arch Linux
+
+# Adicionar Flathub
+flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+# Instalar FreeRDP do Flathub
+flatpak install flathub com.freerdp.FreeRDP
+```
+
+### Detecção Automática
+- **Prioridade**: FreeRDP do Flathub (`com.freerdp.FreeRDP`) - versão mais atual
+- **Fallback**: FreeRDP do sistema (`xfreerdp3`, `xfreerdp`, `freerdp`)
+- **Transparente**: Não requer configuração manual do usuário
+
+### Benefícios
+- ✅ **Versão mais recente** do FreeRDP (3.x)
+- ✅ **Isolado** do sistema (não interfere em outros programas)
+- ✅ **Compatibilidade** garantida com recursos mais novos
+- ✅ **Tratamento correto** de desconexões normais (fechamento pelo X)
+- ✅ **Atualizações** automáticas via Flathub
+
 ## 🛠️ Desenvolvimento
 
+### Configuração do Ambiente
+
+```bash
+# Clonar repositório
+git clone https://github.com/marcospintian/freerdp-gui.git
+cd freerdp-gui
+
+# Criar ambiente virtual
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Instalar dependências
+pip install -r requirements.txt
+```
+
 ### Testando
+
 ```bash
 # Executar em modo debug
 python main.py
@@ -190,18 +304,67 @@ python main.py
 tail -f ~/.config/rdp-connector.log
 ```
 
+### Build e Empacotamento
+
+```bash
+# Build do executável (PyInstaller)
+python3 build.py
+
+# Criar pacotes para distribuição
+./package.sh  # Menu interativo com opções
+
+# Ou especificamente:
+./create_appimage.sh  # AppImage
+./create_deb.sh       # Pacote .deb
+```
+
+### Scripts Disponíveis
+
+- `build.py` - Build com PyInstaller
+- `package.sh` - Menu principal de empacotamento
+- `create_appimage.sh` - Gera AppImage
+- `create_deb.sh` - Gera pacote Debian
+- `freerdp-gui.spec` - Configuração PyInstaller
+
+### Testando os Pacotes
+
+```bash
+# Testar AppImage
+./FreeRDP-GUI-x86_64.AppImage
+
+# Testar .deb (Ubuntu/Debian)
+sudo apt install ./freerdp-gui_2.1.0_amd64.deb
+```
+
 ### Contribuindo
+
 1. Fork o projeto
-2. Crie uma branch para sua feature
-3. Teste com diferentes distribuições
-4. Envie um PR
+2. Crie uma branch para sua feature (`git checkout -b feature/nova-funcionalidade`)
+3. Faça suas mudanças
+4. Teste com diferentes distribuições
+5. Teste o empacotamento: `./package.sh`
+6. Envie um PR
+
+### Estrutura de Release
+
+Para criar uma release:
+
+1. **Teste completo**: Execute em diferentes ambientes
+2. **Build limpo**: `rm -rf build dist *.AppImage *.deb && python3 build.py`
+3. **Gere pacotes**: `./package.sh` (opção 3 - ambos)
+4. **Teste pacotes**: Verifique se funcionam em ambiente limpo
+5. **Crie release**: Upload dos arquivos `.AppImage` e `.deb`
 
 ## 🔧 Troubleshooting
 
 ### Erro: "xfreerdp não encontrado"
 ```bash
+# Opção 1: FreeRDP do Flathub (Recomendado)
+flatpak install flathub com.freerdp.FreeRDP
+
+# Opção 2: FreeRDP do sistema
 # Ubuntu/Debian
-sudo apt install freerdp2-x11
+sudo apt install freerdp3-x11
 
 # Fedora
 sudo dnf install freerdp
@@ -209,6 +372,19 @@ sudo dnf install freerdp
 # Arch
 sudo pacman -S freerdp
 ```
+
+### Aplicação não abre uma nova janela
+A partir da v2.1, o FreeRDP-GUI usa **instância única inteligente**:
+- Se já estiver rodando, tentar abrir novamente **ativa a janela existente**
+- Não abre múltiplas instâncias
+- Verifique o system tray para a instância em execução
+
+### Muitas notificações / Ruído excessivo
+Na v2.1, as notificações foram otimizadas:
+- **Removidas**: Notificações de inicialização da aplicação
+- **Removidas**: Notificações de conexões bem-sucedidas
+- **Mantidas**: Apenas notificações de erro crítico
+- Para mais controle: Configure as notificações do sistema
 
 ### Problemas com Master Password
 1. **Esqueceu a master password**: 
@@ -227,7 +403,27 @@ sudo pacman -S freerdp
 2. **Conexões ativas**: System tray mostra conexões em andamento
 3. **Cleanup automático**: Aplicação finaliza threads automaticamente
 
-## 📋 Changelog
+### Desconexões reportadas como erro (FreeRDP 3.x)
+Na v2.1, o tratamento de desconexões foi melhorado:
+- Fechamentos normais pelo usuário (botão X) não são mais erros
+- Mensagens como `ERRCONNECT_CONNECT_CANCELLED` são tratadas como desconexões normais
+- Verifique os logs para confirmar se foi uma desconexão intencional
+
+#### **Canais de Feedback**
+- **Issues no GitHub**: Para bugs e sugestões
+- **Logs**: `~/.config/rdp-connector.log`
+- **Informações do sistema**: Menu → Ajuda → Sobre
+
+
+## �📋 Changelog
+
+### v2.1.0 (Atualização de Recursos)
+- 🏗️ **Suporte Completo ao FreeRDP do Flathub** - Detecção automática e prioritária do `com.freerdp.FreeRDP`
+- 🔄 **Instância Única Inteligente** - Ativação da janela existente em vez de bloqueio
+- 🔕 **Notificações Otimizadas** - Redução de ruído, foco em erros críticos
+- 🛠️ **Tratamento Melhorado de Desconexões** - FreeRDP 3.x não reporta fechamentos normais como erro
+- ⚡ **Performance Aprimorada** - Menos overhead de notificações e melhor gerenciamento de instâncias
+- 🔧 **Compatibilidade FreeRDP 3.x** - Tratamento correto de `ERRCONNECT_CONNECT_CANCELLED` e `freerdp_abort_connect_context`
 
 ### v2.0.0 (Nova Major Version)
 - 🔐 Sistema híbrido de criptografia (chave padrão + master password opcional)
@@ -260,4 +456,4 @@ GPL v3 - Veja LICENSE para detalhes.
 
 ---
 
-**FreeRDP-GUI v2.0** - *Desenvolvido com ❤️ e ☕ para simplificar conexões RDP no Linux*
+**FreeRDP-GUI v2.1** - *Desenvolvido com ❤️ e ☕ para simplificar conexões RDP no Linux*

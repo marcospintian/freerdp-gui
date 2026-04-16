@@ -17,6 +17,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # Variáveis globais
 shared_memory = None
 logger = None
+local_server = None
+activation_pending = False
 
 def mostrar_erro_dialog(titulo, mensagem):
     """
@@ -71,8 +73,9 @@ def main():
     # Verificar dependências críticas de importação
     try:
         from PySide6.QtWidgets import QApplication, QMessageBox
-        from PySide6.QtCore import QSharedMemory
+        from PySide6.QtCore import QIODevice
         from PySide6.QtGui import QIcon
+        from PySide6.QtNetwork import QLocalServer, QLocalSocket
     except ImportError:
         mensagem = "PySide6 não está instalado.\n\nInstale com:\npip install PySide6"
         mostrar_erro_dialog("Erro de Dependência", mensagem)
@@ -97,7 +100,7 @@ def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     app.setApplicationName("FreeRDP-GUI")
-    app.setApplicationVersion("2.0.0")
+    app.setApplicationVersion("2.1.0")
     app.setOrganizationName("FreeRDP-GUI")
 
     # Definir ícone global da aplicação (usar assets/rdp-icon.png quando disponível)
@@ -128,28 +131,41 @@ def main():
     # Definir função de verificar dependências (precisa estar após importações)
     def verificar_dependencias():
         """Verifica dependências críticas"""
+        import shutil
+        
         dependencias_faltando = []
         
-        # Verificar xfreerdp
-        if not verificar_comando_disponivel("xfreerdp3"):
-            dependencias_faltando.append("xfreerdp (instale: sudo apt install freerdp3-x11)")
+        # Verificar FreeRDP (sistema ou Flathub)
+        freerdp_disponivel = False
+        
+        # Primeiro, tentar FreeRDP do Flathub
+        try:
+            result = subprocess.run(
+                ["flatpak", "run", "com.freerdp.FreeRDP", "/help"],
+                capture_output=True, timeout=10
+            )
+            # Aceitar qualquer código de retorno que não seja erro de comando não encontrado
+            if result.returncode != 127:  # 127 = comando não encontrado
+                freerdp_disponivel = True
+                print("✅ FreeRDP do Flathub detectado")
+        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+            pass
+        
+        # Se não encontrou no Flathub, verificar no sistema
+        if not freerdp_disponivel:
+            # Tentar diferentes nomes de comando
+            for cmd in ["xfreerdp3", "xfreerdp", "freerdp"]:
+                if shutil.which(cmd):
+                    freerdp_disponivel = True
+                    print(f"✅ FreeRDP do sistema detectado ({cmd})")
+                    break
+        
+        if not freerdp_disponivel:
+            dependencias_faltando.append("FreeRDP (instale: sudo apt install freerdp2-x11 OU flatpak install flathub com.freerdp.FreeRDP)")
         
         if dependencias_faltando:
             erro = "Dependências faltando:\n\n" + "\n".join([f"• {dep}" for dep in dependencias_faltando])
             erro += "\n\nInstale as dependências e tente novamente."
-            
-            # Tentar notificação desktop
-            try:
-                if verificar_comando_disponivel("notify-send"):
-                    subprocess.run([
-                        "notify-send", 
-                        "-i", "error",
-                        "FreeRDP-GUI - Dependências", 
-                        "Dependências faltando. Veja o terminal."
-                    ], timeout=5)
-            except Exception:
-                pass  # Ignorar erro de notificação
-            
             return False, erro
         
         return True, ""
@@ -158,46 +174,74 @@ def main():
     deps_ok, deps_erro = verificar_dependencias()
     if not deps_ok:
         logger.error("Dependências faltando")
-        QMessageBox.critical(None, "Dependências Faltando", deps_erro)
+        print("\n" + "="*60)
+        print("❌ DEPENDÊNCIAS FALTANDO")
+        print("="*60)
+        print(deps_erro)
+        print("="*60)
         return 1
 
-    # Verificar instância única
+    # Verificar instância única e permitir ativação da instância existente
     app_id = 'freerdp-gui-b6166164-9b26-4c4f-9e7d-1c39c277f9c8'
-    shared_memory = QSharedMemory(app_id)
+    activation_server_name = f"{app_id}-activation"
+    local_server = QLocalServer()
 
-    # Forçar detach se houver memória "fantasma"
-    if shared_memory.isAttached():
-        logger.warning("Memória compartilhada fantasma encontrada, liberando...")
-        shared_memory.detach()
-
-    # Tentar anexar à memória compartilhada. Se conseguir, outra instância está rodando
-    if shared_memory.attach():
-        logger.warning("Outra instância já está rodando")
-        QMessageBox.information(None, "FreeRDP-GUI",
-                               "Outra instância da aplicação já está rodando.\n\n"
-                               "Verifique a bandeja do sistema ou feche a instância anterior.")
-        return 0
-
-    # Criar a memória compartilhada
-    if not shared_memory.create(1):
-        logger.warning("Falha ao criar memória compartilhada")
-        # Tentar notificação
+    def handle_local_activation():
+        """Ativa a janela quando outra instância pedir."""
+        global activation_pending
+        connection = local_server.nextPendingConnection()
+        if not connection:
+            return
         try:
-            if verificar_comando_disponivel("notify-send"):
-                subprocess.run([
-                    "notify-send",
-                    "-i", "error",
-                    "FreeRDP-GUI - Aviso",
-                    "Possível problema de permissões. Aplicação pode não funcionar corretamente."
-                ], timeout=5)
-        except Exception:
-            pass
-        
-        # Não falhar por causa da memória compartilhada, apenas avisar
-        logger.warning("Continuando sem controle de instância única")
+            if connection.waitForReadyRead(1000):
+                # Define flag para ativar a janela depois que ela for criada
+                activation_pending = True
+                logger.info("Ativação pendente recebida - janela será ativada quando criada")
+        finally:
+            connection.disconnectFromServer()
 
-    # Garantir que a memória compartilhada seja limpa na saída
-    atexit.register(cleanup_shared_memory)
+    # Tentar criar o servidor local para esta instância
+    logger.info(f"Tentando criar servidor de ativação: {activation_server_name}")
+    if not local_server.listen(activation_server_name):
+        # Se não conseguir ouvir, significa que já existe uma instância rodando
+        logger.info("Instância já existe, tentando ativar...")
+
+        # Tentar ativar a instância existente
+        existing_socket = QLocalSocket()
+        existing_socket.connectToServer(activation_server_name, QIODevice.WriteOnly)
+        logger.info("Tentando conectar ao servidor existente...")
+        if existing_socket.waitForConnected(3000):
+            logger.info("Conexão estabelecida, enviando ativação...")
+            try:
+                existing_socket.write(b"ACTIVATE")
+                existing_socket.flush()
+                # Não esperar por confirmação - apenas desconectar
+                existing_socket.disconnectFromServer()
+                logger.info("Instância existente ativada com sucesso")
+            except Exception as e:
+                logger.warning(f"Erro ao enviar ativação: {e}")
+                existing_socket.disconnectFromServer()
+            return 0  # Sair desta instância
+        else:
+            error_msg = existing_socket.errorString()
+            logger.warning(f"Não foi possível conectar ao servidor existente: {error_msg}")
+            # Tentar limpar e criar novo servidor
+            logger.info("Tentando limpar servidor zombie...")
+            QLocalServer.removeServer(activation_server_name)
+            if not local_server.listen(activation_server_name):
+                logger.error("Falha crítica: não foi possível criar servidor de ativação após limpeza")
+                # Continuar sem controle de instância única como fallback
+            else:
+                logger.info("Servidor de ativação criado após limpeza")
+
+    else:
+        logger.info("Servidor de ativação criado com sucesso - primeira instância")
+
+    # Se chegou aqui, esta é a primeira instância ou conseguimos criar o servidor
+    local_server.newConnection.connect(handle_local_activation)
+
+    # Garantir que o servidor de ativação seja fechado na saída
+    atexit.register(lambda: local_server.close())
 
     # Criar a janela principal
     try:
@@ -232,17 +276,12 @@ def main():
         window.show()
         logger.info("Interface inicializada com sucesso")
         
-        # Notificação de início (opcional)
-        try:
-            if verificar_comando_disponivel("notify-send"):
-                subprocess.run([
-                    "notify-send",
-                    "-i", "krdc",
-                    "FreeRDP-GUI",
-                    "Aplicação iniciada com sucesso"
-                ], timeout=5)
-        except Exception:
-            pass  # Ignorar erro de notificação
+        # Verificar se há ativação pendente
+        global activation_pending
+        if activation_pending:
+            window.show_window()
+            activation_pending = False
+            logger.info("Janela ativada devido a solicitação de outra instância")
             
     except Exception as e:
         logger.exception(f"Erro ao mostrar janela: {e}")
