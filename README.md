@@ -4,7 +4,6 @@ Interface gráfica moderna e intuitiva para conexões RDP usando FreeRDP. **Pron
 
 [![Status](https://img.shields.io/badge/Status-Beta%20Ready-brightgreen.svg)](https://github.com/SEU_USERNAME/freerdp-gui/releases)
 [![Version](https://img.shields.io/badge/Version-2.1.0-blue.svg)](https://github.com/SEU_USERNAME/freerdp-gui)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## ✨ Novidades da v2.1
 
@@ -443,10 +442,6 @@ Na v2.1, o tratamento de desconexões foi melhorado:
 ### v1.x (Legacy)
 - Sistema baseado em keyring
 - Nome: RDP Connector Pro
-
-## 📄 Licença
-
-GPL v3 - Veja LICENSE para detalhes.
 
 ## 🙋‍♂️ Suporte
 
