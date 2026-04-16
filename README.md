@@ -116,7 +116,46 @@ python3 build.py
 
 ```
 
-## 🔐 Sistema de Senhas
+## � Troubleshooting
+
+### Problemas com Pacote .deb
+
+Se encontrar erros de dependências ao instalar o `.deb` no Linux Mint/Ubuntu:
+
+```bash
+# Instalar dependências Qt6 que podem estar faltando
+sudo apt install libqt6gui6 libqt6widgets6 libqt6core6 libglib2.0-0
+
+# Tentar instalar novamente
+sudo dpkg -i freerdp-gui_2.1.0_amd64.deb
+
+# Corrigir dependências quebradas (se necessário)
+sudo apt install -f
+```
+
+### Alternativa: Usar AppImage
+
+Se o .deb continuar com problemas, use o AppImage que é completamente independente:
+
+```bash
+# Tornar executável
+chmod +x FreeRDP-GUI-x86_64.AppImage
+
+# Executar
+./FreeRDP-GUI-x86_64.AppImage
+```
+
+### Verificar FreeRDP
+
+```bash
+# Verificar se FreeRDP está instalado
+xfreerdp /version
+
+# Ou via Flatpak
+flatpak run com.freerdp.FreeRDP /version
+```
+
+## �🔐 Sistema de Senhas
 
 ### Sistema Híbrido - Duas Opções:
 

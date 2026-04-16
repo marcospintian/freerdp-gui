@@ -61,7 +61,7 @@ Version: $VERSION
 Section: net
 Priority: optional
 Architecture: $ARCH
-Depends: python3 (>= 3.8), python3-pyside6, python3-cryptography, freerdp2-x11 | freerdp, libnotify-bin
+Depends: python3 (>= 3.8), python3-cryptography, freerdp3-x11 | freerdp, libnotify-bin
 Maintainer: FreeRDP-GUI Team <freerdp-gui@example.com>
 Description: Interface gráfica moderna para conexões RDP
  FreeRDP-GUI é uma interface gráfica moderna e intuitiva para conexões RDP
