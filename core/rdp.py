@@ -22,22 +22,23 @@ logger = logging.getLogger(__name__)
 def get_rdp_command() -> list:
     """
     Retorna o comando RDP apropriado baseado no ambiente.
-    
+
     - Sempre tenta usar o FreeRDP do Flathub primeiro
     - Se não estiver disponível, usa xfreerdp3 do sistema
     """
-    # Verificar se FreeRDP do Flathub está disponível
+    # Verificar se FreeRDP do Flathub está instalado via flatpak list
     try:
         result = subprocess.run(
-            ["flatpak", "run", "com.freerdp.FreeRDP", "/help"],
-            capture_output=True, timeout=5
+            ["flatpak", "info", "com.freerdp.FreeRDP"],
+            capture_output=True,
+            timeout=5
         )
-        # Se o app responder, ele está instalado e disponível
-        if result.returncode != 127:
+        # returncode 0 = app está instalado
+        if result.returncode == 0:
             return ["flatpak", "run", "com.freerdp.FreeRDP"]
     except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
         pass
-    
+
     # Fallback para versão do sistema
     return ["xfreerdp3"]
 
