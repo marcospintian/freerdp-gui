@@ -3,6 +3,7 @@ Módulo para conexões RDP
 """
 
 import os
+import shutil 
 import subprocess
 import logging
 from typing import Dict, Optional
@@ -25,6 +26,7 @@ def get_rdp_command() -> list:
 
     - Sempre tenta usar o FreeRDP do Flathub primeiro
     - Se não estiver disponível, usa xfreerdp3 do sistema
+    - Se xfreerdp3 não estiver disponível, usa xfreerdp
     """
     # Verificar se FreeRDP do Flathub está instalado via flatpak list
     try:
@@ -39,7 +41,15 @@ def get_rdp_command() -> list:
     except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
         pass
 
-    # Fallback para versão do sistema
+    # Tentar xfreerdp3 do sistema
+    if shutil.which("xfreerdp3"):
+        return ["xfreerdp3"]
+
+    # Fallback para xfreerdp (FreeRDP 2.x)
+    if shutil.which("xfreerdp"):
+        return ["xfreerdp"]
+
+    # Último recurso: retornar xfreerdp3 e deixar o erro aparecer na execução
     return ["xfreerdp3"]
 
 class RDPConnectionError(Exception):
