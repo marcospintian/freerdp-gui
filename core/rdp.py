@@ -141,6 +141,7 @@ if PYSIDE6_AVAILABLE:
                 f"/v:{self.host}",
                 "/dynamic-resolution",
                 "/compression",
+                "/gfx:AVC420",
                 "/auto-reconnect"
             ])
             
