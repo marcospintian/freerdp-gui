@@ -177,6 +177,12 @@ if PYSIDE6_AVAILABLE:
             # Impressoras
             if self.opcoes.get('impressoras', False):
                 cmd.append("/printer")
+
+            # RemoteApp: o valor já deve conter o alias/caminho aceito pelo
+            # FreeRDP (por exemplo, ||calc ou ||easyerp).
+            remoteapp = self.opcoes.get('remoteapp')
+            if remoteapp:
+                cmd.append(f"/app:{remoteapp}")
             
             # Múltiplos monitores
             if self.opcoes.get('multimonitor', False):

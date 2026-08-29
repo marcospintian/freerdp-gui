@@ -21,7 +21,7 @@ class SystemTrayManager(QObject):
     """Gerenciador do ícone na bandeja do sistema"""
     
     # Sinais
-    conectar_servidor = Signal(str)  # Emitido quando usuário quer conectar a um servidor
+    conectar_servidor = Signal(str, str)  # servidor, programa RemoteApp ou vazio
     mostrar_janela = Signal()       # Emitido quando usuário quer mostrar janela principal
     mostrar_logs = Signal()         # Emitido quando usuário quer ver logs
     sair_aplicacao = Signal()       # Emitido quando usuário quer sair
@@ -33,6 +33,7 @@ class SystemTrayManager(QObject):
         self.tray_icon = None
         self.tray_menu = None
         self.servidores = {}
+        self.remoteapps = {}
         
         self._init_system_tray()
     
@@ -125,11 +126,26 @@ class SystemTrayManager(QObject):
         if servidores_disponiveis:
             # Seção de conexões rápidas
             for servidor in sorted(servidores_disponiveis):
-                action = QAction(f"Conectar a {servidor}", self.tray_menu)
-                action.triggered.connect(
-                    lambda checked, s=servidor: self.conectar_servidor.emit(s)
-                )
-                self.tray_menu.addAction(action)
+                remoteapps = self.remoteapps.get(servidor, [])
+                if not remoteapps:
+                    action = QAction(f"Conectar a {servidor}", self.tray_menu)
+                    action.triggered.connect(
+                        lambda checked, s=servidor: self.conectar_servidor.emit(s, "")
+                    )
+                    self.tray_menu.addAction(action)
+                else:
+                    menu = self.tray_menu.addMenu(servidor)
+                    desktop = menu.addAction("Desktop completo")
+                    desktop.triggered.connect(
+                        lambda checked, s=servidor: self.conectar_servidor.emit(s, "")
+                    )
+                    menu.addSeparator()
+                    for app in remoteapps:
+                        action = menu.addAction(app["nome"])
+                        action.triggered.connect(
+                            lambda checked, s=servidor, p=app["programa"]:
+                                self.conectar_servidor.emit(s, p)
+                        )
             
             # Separador
             self.tray_menu.addSeparator()
@@ -162,7 +178,7 @@ class SystemTrayManager(QObject):
             # Clique do meio mostra logs
             self.mostrar_logs.emit()
     
-    def atualizar_menu_servidores(self, servidores: Dict[str, Tuple[str, str]]):
+    def atualizar_menu_servidores(self, servidores: Dict[str, Tuple[str, str]], remoteapps=None):
         """
         Atualiza lista de servidores no menu
         
@@ -170,6 +186,7 @@ class SystemTrayManager(QObject):
             servidores: Dict com nome_servidor -> (ip, usuario)
         """
         self.servidores = servidores.copy()
+        self.remoteapps = remoteapps or {}
         self._update_menu()
         logger.debug(f"Menu do tray atualizado com {len(servidores)} servidores")
     

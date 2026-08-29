@@ -4,6 +4,7 @@ Módulo para gerenciamento de servidores via arquivo INI com criptografia de sen
 
 import logging
 import configparser
+import uuid
 from typing import Dict, Tuple, Optional
 from pathlib import Path
 
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class ServidorManager:
     """Gerenciador de servidores com suporte a senhas criptografadas"""
+    REMOTEAPP_PREFIX = "RemoteApp:"
     
     def __init__(self):
         self.ini_path = get_ini_path()
@@ -60,6 +62,8 @@ class ServidorManager:
             
             for secao in self.config.sections():
                 try:
+                    if secao.startswith(self.REMOTEAPP_PREFIX):
+                        continue
                     ip = self.config[secao].get("ip", "manual")
                     usuario = self.config[secao].get("usuario", "usuario")
                     servidores[secao] = (ip, usuario)
@@ -103,6 +107,10 @@ class ServidorManager:
         ip_normalizado = normalizar_ip_porta(ip)
         
         try:
+            senha_existente = None
+            if nome in self.config and self.config.has_option(nome, "senha_encrypted"):
+                senha_existente = self.config[nome]["senha_encrypted"]
+
             # Criar seção do servidor
             self.config[nome] = {
                 "ip": ip_normalizado,
@@ -114,6 +122,10 @@ class ServidorManager:
             if senha:
                 if not self.salvar_senha(nome, senha):
                     logger.warning(f"Erro ao salvar senha para servidor '{nome}', mas servidor foi salvo")
+            elif senha_existente:
+                # Alterações de dados básicos não podem apagar uma credencial
+                # existente só porque o campo de senha veio vazio.
+                self.config[nome]["senha_encrypted"] = senha_existente
             
             self._salvar_config()
             logger.info(f"Servidor '{nome}' salvo com sucesso")
@@ -286,6 +298,7 @@ class ServidorManager:
         
         try:
             self.config.remove_section(nome)
+            self._remover_remoteapps_config(nome)
             self._salvar_config()
             logger.info(f"Servidor '{nome}' removido com sucesso")
             return True
@@ -347,7 +360,11 @@ class ServidorManager:
         """
         try:
             self.config.read(self.ini_path, encoding='utf-8')
-            return sorted(self.config.sections(), key=str.lower)
+            return sorted(
+                [s for s in self.config.sections()
+                 if not s.startswith(self.REMOTEAPP_PREFIX)],
+                key=str.lower
+            )
         except Exception as e:
             logger.error(f"Erro ao listar servidores: {str(e)}")
             return []
@@ -388,6 +405,14 @@ class ServidorManager:
             return False
         
         try:
+            tem_senha = self.servidor_tem_senha_salva(nome_atual)
+            if tem_senha and not self.crypto_manager.is_unlocked():
+                logger.error(
+                    "Não é seguro renomear '%s' com as senhas trancadas; "
+                    "desbloqueie-as antes de continuar", nome_atual
+                )
+                return False
+
             # Obter todos os dados do servidor atual
             dados_completos = self.obter_servidor_completo(nome_atual)
             if not dados_completos:
@@ -408,7 +433,7 @@ class ServidorManager:
             }
             
             # Se tinha senha criptografada, re-criptografar com novo contexto
-            if senha_descriptografada and self.crypto_manager.is_unlocked():
+            if senha_encrypted and senha_descriptografada and self.crypto_manager.is_unlocked():
                 nova_senha_encrypted = self.crypto_manager.encrypt_password(
                     senha_descriptografada, nome_novo
                 )
@@ -417,7 +442,11 @@ class ServidorManager:
                 else:
                     logger.warning(f"Erro ao re-criptografar senha para '{nome_novo}'")
             elif senha_encrypted:
-                logger.warning(f"Senha de '{nome_atual}' não pôde ser migrada para '{nome_novo}' - crypto não desbloqueado")
+                logger.error("Senha existente não pôde ser migrada; cancelando rename")
+                self.config.remove_section(nome_novo)
+                return False
+
+            self._renomear_remoteapps_config(nome_atual, nome_novo)
             
             # Remover seção antiga
             self.config.remove_section(nome_atual)
@@ -438,6 +467,54 @@ class ServidorManager:
         except Exception as e:
             logger.error(f"Erro ao salvar configuração INI: {str(e)}")
             raise
+
+    def listar_remoteapps(self, servidor: str) -> list:
+        """Retorna os RemoteApps vinculados ao servidor."""
+        self.config.read(self.ini_path, encoding='utf-8')
+        prefix = f"{self.REMOTEAPP_PREFIX}{servidor}:"
+        apps = []
+        for secao in self.config.sections():
+            if secao.startswith(prefix):
+                apps.append({
+                    "id": secao[len(prefix):],
+                    "nome": self.config[secao].get("nome", ""),
+                    "programa": self.config[secao].get("programa", ""),
+                })
+        return sorted(apps, key=lambda app: app["nome"].lower())
+
+    def salvar_remoteapp(self, servidor: str, nome: str, programa: str,
+                         app_id: str = None) -> Optional[str]:
+        """Cria ou atualiza um RemoteApp sem criar um servidor adicional."""
+        if not self.servidor_existe(servidor) or not nome.strip() or not programa.strip():
+            return None
+        app_id = app_id or uuid.uuid4().hex
+        secao = f"{self.REMOTEAPP_PREFIX}{servidor}:{app_id}"
+        self.config[secao] = {"nome": nome.strip(), "programa": programa.strip()}
+        self._salvar_config()
+        return app_id
+
+    def remover_remoteapp(self, servidor: str, app_id: str) -> bool:
+        secao = f"{self.REMOTEAPP_PREFIX}{servidor}:{app_id}"
+        if secao not in self.config:
+            return False
+        self.config.remove_section(secao)
+        self._salvar_config()
+        return True
+
+    def _renomear_remoteapps_config(self, nome_atual: str, nome_novo: str):
+        antigo = f"{self.REMOTEAPP_PREFIX}{nome_atual}:"
+        novo = f"{self.REMOTEAPP_PREFIX}{nome_novo}:"
+        for secao in list(self.config.sections()):
+            if secao.startswith(antigo):
+                dados = dict(self.config[secao])
+                self.config.remove_section(secao)
+                self.config[novo + secao[len(antigo):]] = dados
+
+    def _remover_remoteapps_config(self, servidor: str):
+        prefix = f"{self.REMOTEAPP_PREFIX}{servidor}:"
+        for secao in list(self.config.sections()):
+            if secao.startswith(prefix):
+                self.config.remove_section(secao)
     
     def recarregar(self):
         """Recarrega configuração do arquivo"""

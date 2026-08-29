@@ -4,6 +4,7 @@ Janela principal da aplicação FreeRDP-GUI com master password opcional
 
 import logging
 import subprocess
+import uuid
 from typing import Dict, Tuple, Optional
 
 try:
@@ -55,6 +56,8 @@ class FreeRDPGUIWindow(QMainWindow):
         self.crypto_manager = get_crypto_manager()
         
         # Estado
+        # Cada execução recebe um identificador próprio. O host não pode ser
+        # usado como chave porque o mesmo servidor pode ter várias sessões.
         self.rdp_threads: Dict[str, RDPThread] = {}
         self.logs_window = None
         
@@ -405,6 +408,11 @@ class FreeRDPGUIWindow(QMainWindow):
         self.combo_servidor = QComboBox()
         self.combo_servidor.currentTextChanged.connect(self._on_servidor_changed)
         servidor_layout.addRow("Servidor:", self.combo_servidor)
+
+        self.combo_remoteapp = QComboBox()
+        self.combo_remoteapp.addItem("Desktop completo", None)
+        self.combo_remoteapp.currentIndexChanged.connect(self._on_remoteapp_changed)
+        servidor_layout.addRow("Conexão:", self.combo_remoteapp)
         
         self.edit_ip_manual = QLineEdit()
         self.edit_ip_manual.setPlaceholderText("Digite IP/hostname (ex: 192.168.1.100 ou servidor.com)")
@@ -567,15 +575,23 @@ class FreeRDPGUIWindow(QMainWindow):
         
         if servidor_atual in self.servidores:
             self.combo_servidor.setCurrentText(servidor_atual)
+            self._on_servidor_changed(servidor_atual)
+        elif self.combo_servidor.count():
+            self._on_servidor_changed(self.combo_servidor.currentText())
         
         if hasattr(self, 'system_tray'):
-            self.system_tray.atualizar_menu_servidores(self.servidores)
+            remoteapps = {
+                nome: self.servidor_manager.listar_remoteapps(nome)
+                for nome in self.servidores if nome != "Manual"
+            }
+            self.system_tray.atualizar_menu_servidores(self.servidores, remoteapps)
         
         logger.info(f"Carregados {len(self.servidores)} servidores")
     
     def _on_servidor_changed(self, servidor_nome: str):
         """Chamado quando servidor é alterado no combo"""
         if servidor_nome == "Manual":
+            self._atualizar_remoteapps([])
             self.edit_ip_manual.setVisible(True)
             self.edit_usuario.setText("usuario")
             self.edit_senha.setText("")
@@ -586,6 +602,7 @@ class FreeRDPGUIWindow(QMainWindow):
             if servidor_nome in self.servidores:
                 _, usuario_padrao = self.servidores[servidor_nome]
                 self.edit_usuario.setText(usuario_padrao)
+                self._atualizar_remoteapps(self.servidor_manager.listar_remoteapps(servidor_nome))
                 
                 senha_salva = self._obter_senha_criptografada(servidor_nome)
                 if senha_salva:
@@ -594,6 +611,19 @@ class FreeRDPGUIWindow(QMainWindow):
                 else:
                     self.edit_senha.setText("")
                     self._atualizar_indicador_senha_salva(False)
+
+    def _atualizar_remoteapps(self, remoteapps):
+        self.combo_remoteapp.blockSignals(True)
+        self.combo_remoteapp.clear()
+        self.combo_remoteapp.addItem("Desktop completo", None)
+        for app in remoteapps:
+            self.combo_remoteapp.addItem(app["nome"], app["programa"])
+        self.combo_remoteapp.setCurrentIndex(0)
+        self.combo_remoteapp.blockSignals(False)
+
+    def _on_remoteapp_changed(self, _index):
+        """Mantém Desktop como padrão; o programa é aplicado ao conectar."""
+        return
     
     def _atualizar_indicador_senha_salva(self, tem_senha_salva: bool, esta_trancada: bool = False):
         """Atualiza indicador visual de senha salva"""
@@ -760,6 +790,9 @@ class FreeRDPGUIWindow(QMainWindow):
         usuario = self.edit_usuario.text().strip()
         senha = self.edit_senha.text()
         opcoes = self._obter_opcoes_conexao(servidor)
+        app_id = self.combo_remoteapp.currentData() if hasattr(self, "combo_remoteapp") else None
+        if app_id:
+            opcoes["remoteapp"] = app_id
         
         self._salvar_senha_automatica(servidor, senha)
         self._salvar_configuracoes()
@@ -767,7 +800,7 @@ class FreeRDPGUIWindow(QMainWindow):
         
         self._iniciar_conexao(host, usuario, senha, opcoes)
     
-    def _conectar_rapido(self, servidor: str):
+    def _conectar_rapido(self, servidor: str, remoteapp=None):
         """Conexão rápida via system tray"""
         if servidor not in self.servidores:
             return
@@ -786,6 +819,8 @@ class FreeRDPGUIWindow(QMainWindow):
             return
         
         opcoes = self._obter_opcoes_conexao(servidor)
+        if remoteapp:
+            opcoes["remoteapp"] = remoteapp
         self._iniciar_conexao(host, usuario_padrao, senha, opcoes)
     
     def _iniciar_conexao(self, host: str, usuario: str, senha: str, opcoes: Dict):
@@ -795,10 +830,13 @@ class FreeRDPGUIWindow(QMainWindow):
         self.incrementar_conexoes()
         self.hide()
         
-        thread_id = host
+        thread_id = uuid.uuid4().hex
         rdp_thread = RDPThread(host, usuario, senha, opcoes)
         self.rdp_threads[thread_id] = rdp_thread
-        rdp_thread.finished.connect(lambda sucesso, mensagem: self._on_conexao_finalizada(thread_id, sucesso, mensagem))
+        rdp_thread.finished.connect(
+            lambda sucesso, mensagem, current_id=thread_id:
+                self._on_conexao_finalizada(current_id, sucesso, mensagem)
+        )
         rdp_thread.start()
     
     def _on_conexao_finalizada(self, thread_id: str, sucesso: bool, mensagem: str):
@@ -818,7 +856,6 @@ class FreeRDPGUIWindow(QMainWindow):
             self._notificar("FreeRDP-GUI", f"Erro: {mensagem}", "error")
             logger.error(f"Erro na conexão: {mensagem}")
         
-        self._limpar_thread_rdp()
     
     def _notificar(self, titulo: str, mensagem: str, tipo: str = "information"):
         """Envia notificação (desktop ou tray)"""

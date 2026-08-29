@@ -46,6 +46,7 @@ class GerenciadorServidoresWidget(QWidget):
         # Estado
         self.modo_edicao = False
         self.nome_sendo_editado = None
+        self.remoteapp_id = None
         
         self._init_ui()
         self._recarregar_servidores()
@@ -60,6 +61,29 @@ class GerenciadorServidoresWidget(QWidget):
         self.lista = QListWidget()
         self.lista.currentTextChanged.connect(self._carregar_detalhes)
         layout.addWidget(self.lista)
+
+        layout.addWidget(QLabel("RemoteApps do servidor selecionado:"))
+        self.lista_remoteapps = QListWidget()
+        self.lista_remoteapps.currentRowChanged.connect(self._carregar_remoteapp)
+        layout.addWidget(self.lista_remoteapps)
+        remote_form = QFormLayout()
+        self.input_remoteapp_nome = QLineEdit()
+        self.input_remoteapp_programa = QLineEdit()
+        self.input_remoteapp_programa.setPlaceholderText("Ex.: ||easyerp")
+        remote_form.addRow("Nome amigável:", self.input_remoteapp_nome)
+        remote_form.addRow("Programa:", self.input_remoteapp_programa)
+        layout.addLayout(remote_form)
+        remote_buttons = QHBoxLayout()
+        self.btn_remoteapp_novo = QPushButton("Novo RemoteApp")
+        self.btn_remoteapp_novo.clicked.connect(self._novo_remoteapp)
+        self.btn_remoteapp_salvar = QPushButton("Salvar RemoteApp")
+        self.btn_remoteapp_salvar.clicked.connect(self._salvar_remoteapp)
+        self.btn_remoteapp_remover = QPushButton("Remover RemoteApp")
+        self.btn_remoteapp_remover.clicked.connect(self._remover_remoteapp)
+        remote_buttons.addWidget(self.btn_remoteapp_novo)
+        remote_buttons.addWidget(self.btn_remoteapp_salvar)
+        remote_buttons.addWidget(self.btn_remoteapp_remover)
+        layout.addLayout(remote_buttons)
         
         # Formulário de detalhes
         self._init_formulario(layout)
@@ -220,6 +244,7 @@ class GerenciadorServidoresWidget(QWidget):
                 self.input_ip.setText(ip)
                 self.input_usuario.setText(usuario)
                 self.combo_sec.setCurrentIndex(self._sec_valor_para_indice(sec))
+                self._recarregar_remoteapps(nome)
                 
                 # Tentar carregar senha criptografada
                 senha = self._obter_senha_criptografada(nome)
@@ -235,6 +260,55 @@ class GerenciadorServidoresWidget(QWidget):
         except Exception as e:
             logger.error(f"Erro ao carregar detalhes do servidor '{nome}': {str(e)}")
             self._limpar_campos()
+
+    def _recarregar_remoteapps(self, servidor):
+        self.lista_remoteapps.clear()
+        self.input_remoteapp_nome.clear()
+        self.input_remoteapp_programa.clear()
+        self.remoteapp_id = None
+        for app in self.servidor_manager.listar_remoteapps(servidor):
+            item = self.lista_remoteapps.addItem(app["nome"])
+            self.lista_remoteapps.item(self.lista_remoteapps.count() - 1).setData(
+                Qt.ItemDataRole.UserRole, app)
+
+    def _carregar_remoteapp(self, row):
+        if row < 0:
+            self.remoteapp_id = None
+            return
+        app = self.lista_remoteapps.item(row).data(Qt.ItemDataRole.UserRole)
+        self.remoteapp_id = app["id"]
+        self.input_remoteapp_nome.setText(app["nome"])
+        self.input_remoteapp_programa.setText(app["programa"])
+
+    def _novo_remoteapp(self):
+        self.lista_remoteapps.clearSelection()
+        self.remoteapp_id = None
+        self.input_remoteapp_nome.clear()
+        self.input_remoteapp_programa.clear()
+        self.input_remoteapp_nome.setFocus()
+
+    def _salvar_remoteapp(self):
+        servidor = self.lista.currentItem().text() if self.lista.currentItem() else ""
+        nome = self.input_remoteapp_nome.text().strip()
+        programa = self.input_remoteapp_programa.text().strip()
+        if not servidor or not nome or not programa:
+            QMessageBox.warning(self, "Erro", "Selecione um servidor e preencha nome e programa.")
+            return
+        if self.servidor_manager.salvar_remoteapp(
+                servidor, nome, programa, self.remoteapp_id):
+            self._recarregar_remoteapps(servidor)
+            self.servidores_atualizados.emit()
+        else:
+            QMessageBox.critical(self, "Erro", "Não foi possível salvar o RemoteApp.")
+
+    def _remover_remoteapp(self):
+        servidor = self.lista.currentItem().text() if self.lista.currentItem() else ""
+        if not servidor or not self.remoteapp_id:
+            QMessageBox.warning(self, "Erro", "Selecione um RemoteApp.")
+            return
+        if self.servidor_manager.remover_remoteapp(servidor, self.remoteapp_id):
+            self._recarregar_remoteapps(servidor)
+            self.servidores_atualizados.emit()
     
     def _obter_senha_criptografada(self, nome: str) -> Optional[str]:
         """Obtém senha criptografada para o servidor"""
@@ -389,7 +463,15 @@ class GerenciadorServidoresWidget(QWidget):
         
         if self.nome_sendo_editado != nome:
             if not self.servidor_manager.renomear_servidor(self.nome_sendo_editado, nome):
-                QMessageBox.critical(self, "Erro", "Erro ao renomear servidor")
+                status = self.crypto_manager.get_status_info()
+                if status["has_custom_password"] and not status["is_unlocked"]:
+                    QMessageBox.warning(
+                        self, "Senhas trancadas",
+                        "Desbloqueie as senhas em Senhas > Destrancar "
+                        "antes de renomear um servidor que possui senha salva."
+                    )
+                else:
+                    QMessageBox.critical(self, "Erro", "Erro ao renomear servidor")
                 return False
         
         if not self.servidor_manager.salvar_servidor(nome, ip, usuario, sec=sec):
