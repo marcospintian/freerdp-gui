@@ -69,7 +69,7 @@ class GerenciadorServidoresWidget(QWidget):
         remote_form = QFormLayout()
         self.input_remoteapp_nome = QLineEdit()
         self.input_remoteapp_programa = QLineEdit()
-        self.input_remoteapp_programa.setPlaceholderText("Ex.: ||easyerp")
+        self.input_remoteapp_programa.setPlaceholderText("Ex.: C:\\Programas\\App.exe ou ||easyerp")
         remote_form.addRow("Nome amigável:", self.input_remoteapp_nome)
         remote_form.addRow("Programa:", self.input_remoteapp_programa)
         layout.addLayout(remote_form)

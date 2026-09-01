@@ -475,10 +475,11 @@ class ServidorManager:
         apps = []
         for secao in self.config.sections():
             if secao.startswith(prefix):
+                programa = self.config[secao].get("programa", "")
                 apps.append({
                     "id": secao[len(prefix):],
                     "nome": self.config[secao].get("nome", ""),
-                    "programa": self.config[secao].get("programa", ""),
+                    "programa": programa,
                 })
         return sorted(apps, key=lambda app: app["nome"].lower())
 

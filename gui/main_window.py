@@ -826,7 +826,7 @@ class FreeRDPGUIWindow(QMainWindow):
     def _iniciar_conexao(self, host: str, usuario: str, senha: str, opcoes: Dict):
         """Inicia conexão RDP com parâmetros fornecidos"""
         logger.info(f"Iniciando conexão RDP para {host} com usuário {usuario}")
-        
+
         self.incrementar_conexoes()
         self.hide()
         

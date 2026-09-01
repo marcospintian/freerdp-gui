@@ -178,10 +178,15 @@ if PYSIDE6_AVAILABLE:
             if self.opcoes.get('impressoras', False):
                 cmd.append("/printer")
 
-            # RemoteApp: o valor já deve conter o alias/caminho aceito pelo
-            # FreeRDP (por exemplo, ||calc ou ||easyerp).
+            # RemoteApp: o valor deve ser compatível com FreeRDP.
+            # FreeRDP espera formato: /app:program:<path> ou /app:program:||alias
+            # Se o usuário fornecer apenas o caminho ou alias, adicionamos o prefixo 'program:'
             remoteapp = self.opcoes.get('remoteapp')
             if remoteapp:
+                # Verificar se já tem prefixo reconhecido pelo FreeRDP
+                prefixes = ('program:', 'cmd:', 'file:', 'guid:', 'icon:', 'name:', 'workdir:', 'hidef:', '||')
+                if not any(remoteapp.startswith(p) for p in prefixes):
+                    remoteapp = f"program:{remoteapp}"
                 cmd.append(f"/app:{remoteapp}")
             
             # Múltiplos monitores
